@@ -31,9 +31,9 @@ func TestGetPix(t *testing.T) {
 	svc := service.NewPixService(pc.Pool, pixRepo, cobRepo, pspClient, outboxWriter)
 
 	pix := &domain.PixRecebido{
-		E2EID: "E90400888202305231234ABCDEFG12345",
-		Chave: "matspectrum@gmail.com",
-		Valor: "100.00",
+		E2EID:         "E90400888202305231234ABCDEFG12345",
+		Chave:         "matspectrum@gmail.com",
+		ValorCentavos: 10000,
 	}
 
 	err = svc.ProcessPixRecebido(ctx, pix)
@@ -42,7 +42,7 @@ func TestGetPix(t *testing.T) {
 	result, err := svc.GetPix(ctx, pix.E2EID)
 	require.NoError(t, err)
 	assert.Equal(t, pix.E2EID, result.E2EID)
-	assert.Equal(t, "100.00", result.Valor)
+	assert.Equal(t, domain.ValorCentavos(10000), result.ValorCentavos)
 }
 
 func TestListPix(t *testing.T) {
@@ -60,14 +60,14 @@ func TestListPix(t *testing.T) {
 	svc := service.NewPixService(pc.Pool, pixRepo, cobRepo, pspClient, outboxWriter)
 
 	pix1 := &domain.PixRecebido{
-		E2EID: "E0000000000123456789012345678901",
-		Chave: "matspectrum@gmail.com",
-		Valor: "50.00",
+		E2EID:         "E0000000000123456789012345678901",
+		Chave:         "matspectrum@gmail.com",
+		ValorCentavos: 5000,
 	}
 	pix2 := &domain.PixRecebido{
-		E2EID: "E0000000000123456789012345678902",
-		Chave: "outro@exemplo.com",
-		Valor: "75.00",
+		E2EID:         "E0000000000123456789012345678902",
+		Chave:         "outro@exemplo.com",
+		ValorCentavos: 7500,
 	}
 
 	require.NoError(t, svc.ProcessPixRecebido(ctx, pix1))
@@ -97,14 +97,14 @@ func TestCreateDevolucao(t *testing.T) {
 	svc := service.NewPixService(pc.Pool, pixRepo, cobRepo, pspClient, outboxWriter)
 
 	pix := &domain.PixRecebido{
-		E2EID: "E0000000000123456789012345678999",
-		Chave: "matspectrum@gmail.com",
-		Valor: "200.00",
+		E2EID:         "E0000000000123456789012345678999",
+		Chave:         "matspectrum@gmail.com",
+		ValorCentavos: 20000,
 	}
 	require.NoError(t, svc.ProcessPixRecebido(ctx, pix))
 
 	dev, err := svc.CreateDevolucao(ctx, "E0000000000123456789012345678999", "DEV001", "100.00")
 	require.NoError(t, err)
-	assert.Equal(t, "100.00", dev.Valor)
+	assert.Equal(t, domain.ValorCentavos(10000), dev.Valor)
 	assert.NotEmpty(t, dev.ID)
 }

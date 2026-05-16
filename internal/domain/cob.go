@@ -2,6 +2,8 @@ package domain
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -47,9 +49,31 @@ type Devedor struct {
 	CNPJ string `json:"cnpj,omitempty"`
 }
 
+// ValorCentavos representa um valor monetário em centavos (int64).
+// R$ 123.45 = 12345 centavos.
+// Serializa como string decimal no JSON (formato BACEN).
+type ValorCentavos int64
+
+func (v ValorCentavos) MarshalJSON() ([]byte, error) {
+	return json.Marshal(fmt.Sprintf("%.2f", float64(v)/100.0))
+}
+
+func (v *ValorCentavos) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return fmt.Errorf("valor inválido: %s", s)
+	}
+	*v = ValorCentavos(int64(f * 100.0))
+	return nil
+}
+
 // Valor representa o valor monetário.
 type Valor struct {
-	Original string `json:"original"`
+	Original ValorCentavos `json:"original"`
 }
 
 // Cobranca representa uma cobrança imediata Pix.
@@ -76,8 +100,8 @@ func (c *Cobranca) Validate() error {
 	if c.Chave == "" {
 		return FormatValidationError("chave é obrigatória")
 	}
-	if c.Valor.Original == "" {
-		return FormatValidationError("valor.original é obrigatório")
+	if c.Valor.Original <= 0 {
+		return FormatValidationError("valor.original deve ser maior que zero")
 	}
 	if c.Devedor.CPF == "" && c.Devedor.CNPJ == "" {
 		return FormatValidationError("devedor deve ter CPF ou CNPJ")
@@ -96,7 +120,6 @@ func (c *Cobranca) Sanitize() {
 	c.Devedor.CNPJ = strings.TrimSpace(c.Devedor.CNPJ)
 	c.Devedor.Nome = strings.TrimSpace(c.Devedor.Nome)
 	c.SolicitacaoPagador = strings.TrimSpace(c.SolicitacaoPagador)
-	c.Valor.Original = strings.TrimSpace(c.Valor.Original)
 }
 
 // CobrancaPatch representa alteração parcial de cobrança.

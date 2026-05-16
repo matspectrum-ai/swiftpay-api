@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/matspectrum/swiftpay-api/internal/domain"
 	"github.com/matspectrum/swiftpay-api/internal/port/psp/mock"
 	"github.com/matspectrum/swiftpay-api/internal/service"
 	"github.com/matspectrum/swiftpay-api/internal/store/postgres"
@@ -39,7 +40,7 @@ func TestWebhookCallbackAtomicity(t *testing.T) {
 	pix, err := pixRepo.GetByE2EID(ctx, "E1234567890123456789012345678901")
 	require.NoError(t, err)
 	assert.NotNil(t, pix)
-	assert.Equal(t, "10.00", pix.Valor)
+	assert.Equal(t, domain.ValorCentavos(1000), pix.ValorCentavos)
 
 	var eventCount int
 	err = pc.Pool.QueryRow(ctx,

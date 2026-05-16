@@ -34,7 +34,7 @@ func TestOutboxWriteOnCreate(t *testing.T) {
 	cob := &domain.Cobranca{
 		TxID:  "outb1outb2outb3outb4outb5outb678",
 		Chave: "matspectrum@gmail.com",
-		Valor: domain.Valor{Original: "10.00"},
+		Valor: domain.Valor{Original: 1000},
 		Devedor: domain.Devedor{
 			Nome: "João Silva",
 			CPF:  "01234567890",
@@ -77,7 +77,7 @@ func TestOutboxPublished(t *testing.T) {
 	cob := &domain.Cobranca{
 		TxID:  "publ1publ2publ3publ4publ5publ678",
 		Chave: "matspectrum@gmail.com",
-		Valor: domain.Valor{Original: "30.00"},
+		Valor: domain.Valor{Original: 3000},
 		Devedor: domain.Devedor{
 			Nome: "Ana Costa",
 			CPF:  "55566677788",

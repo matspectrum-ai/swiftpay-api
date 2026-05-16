@@ -29,7 +29,7 @@ func (r *CobRepo) Create(ctx context.Context, tx pgx.Tx, cob *domain.Cobranca) e
 		 calendario_criacao, calendario_expiracao, devedor_nome, devedor_cpf,
 		 devedor_cnpj, solicitacao_pagador, location_url, pix_copia_e_cola, revisao)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		cob.TxID, cob.Chave, cob.Valor.Original, cob.Status,
+		cob.TxID, cob.Chave, int64(cob.Valor.Original), cob.Status,
 		cob.Calendar.Criacao, cob.Calendar.Criacao.Add(time.Duration(cob.Calendar.Expiracao)*time.Second),
 		cob.Devedor.Nome, cob.Devedor.CPF, cob.Devedor.CNPJ,
 		cob.SolicitacaoPagador, cob.Location, cob.PixCopiaECola, cob.Revisao,
@@ -50,7 +50,7 @@ func (r *CobRepo) Update(ctx context.Context, tx pgx.Tx, cob *domain.Cobranca) e
 		 location_url = $10, pix_copia_e_cola = $11, revisao = $12,
 		 updated_at = NOW()
 		 WHERE txid = $1`,
-		cob.TxID, cob.Chave, cob.Valor.Original, cob.Status,
+		cob.TxID, cob.Chave, int64(cob.Valor.Original), cob.Status,
 		cob.Calendar.Criacao.Add(time.Duration(cob.Calendar.Expiracao)*time.Second),
 		cob.Devedor.Nome, cob.Devedor.CPF, cob.Devedor.CNPJ,
 		cob.SolicitacaoPagador, cob.Location, cob.PixCopiaECola, cob.Revisao,
@@ -84,15 +84,16 @@ func (r *CobRepo) GetByTxID(ctx context.Context, txid string) (*domain.Cobranca,
 	var cob domain.Cobranca
 	var statusStr string
 	var calendarioExpiracao time.Time
+	var valorOriginal int64
 
 	err := r.db.QueryRow(ctx,
-		`SELECT txid, chave_pix, valor_original::text, status,
+		`SELECT txid, chave_pix, valor_original::bigint, status,
 		 calendario_criacao, calendario_expiracao, devedor_nome,
 		 devedor_cpf, devedor_cnpj, solicitacao_pagador,
 		 location_url, pix_copia_e_cola, revisao, created_at, updated_at
 		 FROM cobrancas WHERE txid = $1`, txid,
 	).Scan(
-		&cob.TxID, &cob.Chave, &cob.Valor.Original, &statusStr,
+		&cob.TxID, &cob.Chave, &valorOriginal, &statusStr,
 		&cob.Calendar.Criacao, &calendarioExpiracao, &cob.Devedor.Nome,
 		&cob.Devedor.CPF, &cob.Devedor.CNPJ, &cob.SolicitacaoPagador,
 		&cob.Location, &cob.PixCopiaECola, &cob.Revisao,
@@ -106,6 +107,7 @@ func (r *CobRepo) GetByTxID(ctx context.Context, txid string) (*domain.Cobranca,
 	}
 
 	cob.Status = domain.CobStatus(statusStr)
+	cob.Valor.Original = domain.ValorCentavos(valorOriginal)
 	cob.Calendar.Expiracao = int(calendarioExpiracao.Sub(cob.Calendar.Criacao).Seconds())
 	return &cob, nil
 }
@@ -131,7 +133,7 @@ func (r *CobRepo) List(ctx context.Context, filter domain.CobFilter) ([]domain.C
 	}
 
 	rows, err := r.db.Query(ctx,
-		`SELECT txid, chave_pix, valor_original::text, status,
+		`SELECT txid, chave_pix, valor_original::bigint, status,
 		 calendario_criacao, calendario_expiracao, devedor_nome,
 		 devedor_cpf, devedor_cnpj, solicitacao_pagador,
 		 location_url, pix_copia_e_cola, revisao, created_at, updated_at
@@ -152,9 +154,10 @@ func (r *CobRepo) List(ctx context.Context, filter domain.CobFilter) ([]domain.C
 		var cob domain.Cobranca
 		var statusStr string
 		var calendarioExpiracao time.Time
+		var valorOriginal int64
 
 		if err := rows.Scan(
-			&cob.TxID, &cob.Chave, &cob.Valor.Original, &statusStr,
+			&cob.TxID, &cob.Chave, &valorOriginal, &statusStr,
 			&cob.Calendar.Criacao, &calendarioExpiracao, &cob.Devedor.Nome,
 			&cob.Devedor.CPF, &cob.Devedor.CNPJ, &cob.SolicitacaoPagador,
 			&cob.Location, &cob.PixCopiaECola, &cob.Revisao,
@@ -163,6 +166,7 @@ func (r *CobRepo) List(ctx context.Context, filter domain.CobFilter) ([]domain.C
 			return nil, 0, fmt.Errorf("scaneando cobrança: %w", err)
 		}
 		cob.Status = domain.CobStatus(statusStr)
+		cob.Valor.Original = domain.ValorCentavos(valorOriginal)
 		cob.Calendar.Expiracao = int(calendarioExpiracao.Sub(cob.Calendar.Criacao).Seconds())
 		cobs = append(cobs, cob)
 	}

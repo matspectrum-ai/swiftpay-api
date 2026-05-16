@@ -27,7 +27,7 @@ func (r *PixRepo) Create(ctx context.Context, tx pgx.Tx, pix *domain.PixRecebido
 		`INSERT INTO pix_recebidos (e2eid, txid, chave_pix, valor, horario_liquidacao,
 		 pagador_nome, pagador_cpf, pagador_cnpj, info_pagador)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		pix.E2EID, pix.TxID, pix.Chave, pix.Valor,
+		pix.E2EID, pix.TxID, pix.Chave, int64(pix.ValorCentavos),
 		pix.HorarioLiquidacao, pix.PagadorNome, pix.PagadorCPF,
 		pix.PagadorCNPJ, pix.InfoPagador,
 	)
@@ -40,13 +40,14 @@ func (r *PixRepo) Create(ctx context.Context, tx pgx.Tx, pix *domain.PixRecebido
 // GetByE2EID busca Pix por e2eid.
 func (r *PixRepo) GetByE2EID(ctx context.Context, e2eid string) (*domain.PixRecebido, error) {
 	var pix domain.PixRecebido
+	var valorCentavos int64
 
 	err := r.db.QueryRow(ctx,
-		`SELECT e2eid, txid, chave_pix, valor::text, horario_liquidacao,
+		`SELECT e2eid, txid, chave_pix, valor::bigint, horario_liquidacao,
 		 pagador_nome, pagador_cpf, pagador_cnpj, info_pagador, created_at
 		 FROM pix_recebidos WHERE e2eid = $1`, e2eid,
 	).Scan(
-		&pix.E2EID, &pix.TxID, &pix.Chave, &pix.Valor,
+		&pix.E2EID, &pix.TxID, &pix.Chave, &valorCentavos,
 		&pix.HorarioLiquidacao, &pix.PagadorNome, &pix.PagadorCPF,
 		&pix.PagadorCNPJ, &pix.InfoPagador, &pix.CreatedAt,
 	)
@@ -57,6 +58,7 @@ func (r *PixRepo) GetByE2EID(ctx context.Context, e2eid string) (*domain.PixRece
 		return nil, fmt.Errorf("buscando pix e2eid=%s: %w", e2eid, err)
 	}
 
+	pix.ValorCentavos = domain.ValorCentavos(valorCentavos)
 	return &pix, nil
 }
 
@@ -83,7 +85,7 @@ func (r *PixRepo) List(ctx context.Context, filter domain.PixFilter) ([]domain.P
 	}
 
 	rows, err := r.db.Query(ctx,
-		`SELECT e2eid, txid, chave_pix, valor::text, horario_liquidacao,
+		`SELECT e2eid, txid, chave_pix, valor::bigint, horario_liquidacao,
 		 pagador_nome, pagador_cpf, pagador_cnpj, info_pagador, created_at
 		 FROM pix_recebidos
 		 WHERE ($3::timestamptz IS NULL OR horario_liquidacao >= $3)
@@ -104,13 +106,15 @@ func (r *PixRepo) List(ctx context.Context, filter domain.PixFilter) ([]domain.P
 	var pixs []domain.PixRecebido
 	for rows.Next() {
 		var pix domain.PixRecebido
+		var valorCentavos int64
 		if err := rows.Scan(
-			&pix.E2EID, &pix.TxID, &pix.Chave, &pix.Valor,
+			&pix.E2EID, &pix.TxID, &pix.Chave, &valorCentavos,
 			&pix.HorarioLiquidacao, &pix.PagadorNome, &pix.PagadorCPF,
 			&pix.PagadorCNPJ, &pix.InfoPagador, &pix.CreatedAt,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scaneando pix: %w", err)
 		}
+		pix.ValorCentavos = domain.ValorCentavos(valorCentavos)
 		pixs = append(pixs, pix)
 	}
 
@@ -126,7 +130,7 @@ func (r *PixRepo) CreateDevolucao(ctx context.Context, tx pgx.Tx, dev *domain.De
 	_, err := tx.Exec(ctx,
 		`INSERT INTO devolucoes (external_id, e2eid, valor, status, horario)
 		 VALUES ($1, $2, $3, $4, $5)`,
-		dev.ID, dev.E2EID, dev.Valor, dev.Status, dev.Horario,
+		dev.ID, dev.E2EID, int64(dev.Valor), dev.Status, dev.Horario,
 	)
 	if err != nil {
 		return fmt.Errorf("inserindo devolucao id=%s: %w", dev.ID, err)
@@ -137,7 +141,7 @@ func (r *PixRepo) CreateDevolucao(ctx context.Context, tx pgx.Tx, dev *domain.De
 // ListDevolucoes lista devoluções por e2eid.
 func (r *PixRepo) ListDevolucoes(ctx context.Context, e2eid string) ([]domain.Devolucao, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT external_id, e2eid, valor::text, status, horario, created_at
+		`SELECT external_id, e2eid, valor::bigint, status, horario, created_at
 		 FROM devolucoes WHERE e2eid = $1 ORDER BY created_at DESC`, e2eid,
 	)
 	if err != nil {
@@ -148,12 +152,14 @@ func (r *PixRepo) ListDevolucoes(ctx context.Context, e2eid string) ([]domain.De
 	var devs []domain.Devolucao
 	for rows.Next() {
 		var dev domain.Devolucao
+		var valorCentavos int64
 		if err := rows.Scan(
-			&dev.ID, &dev.E2EID, &dev.Valor,
+			&dev.ID, &dev.E2EID, &valorCentavos,
 			&dev.Status, &dev.Horario, &dev.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scaneando devolucao: %w", err)
 		}
+		dev.Valor = domain.ValorCentavos(valorCentavos)
 		devs = append(devs, dev)
 	}
 

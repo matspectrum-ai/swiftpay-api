@@ -69,7 +69,7 @@ func TestHandleCallback(t *testing.T) {
 
 	pix, err := pixService.GetPix(ctx, payload.E2EID)
 	require.NoError(t, err)
-	assert.Equal(t, "150.00", pix.Valor)
+	assert.Equal(t, domain.ValorCentavos(15000), pix.ValorCentavos)
 }
 
 func TestHandleCallbackDuplicate(t *testing.T) {

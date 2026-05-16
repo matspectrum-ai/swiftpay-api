@@ -120,7 +120,7 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 					mu.Lock()
 					discrepancies = append(discrepancies, reconciliationRecord{
 						E2EID:            local.E2EID,
-						LocalValor:       local.Valor,
+						LocalValor:       fmt.Sprintf("%.2f", float64(local.ValorCentavos)/100.0),
 						TipoDiscrepancia: "NAO_ENCONTRADO_PSP",
 					})
 					mu.Unlock()
@@ -128,13 +128,16 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 				}
 
 				hasDiscrepancy := false
+				var pspValor domain.ValorCentavos
+				pspValor.UnmarshalJSON([]byte(`"` + pspPix.Valor + `"`))
+
 				rec := reconciliationRecord{
 					E2EID:      local.E2EID,
-					LocalValor: local.Valor,
+					LocalValor: fmt.Sprintf("%.2f", float64(local.ValorCentavos)/100.0),
 					PSPValor:   pspPix.Valor,
 				}
 
-				if local.Valor != pspPix.Valor {
+				if local.ValorCentavos != pspValor {
 					rec.TipoDiscrepancia = "VALOR_DIVERGENTE"
 					hasDiscrepancy = true
 				}

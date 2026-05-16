@@ -62,9 +62,12 @@ type PSPClient interface {
 	// Pix
 	GetPix(ctx context.Context, e2eid string) (*PixResponse, error)
 	ListPix(ctx context.Context, inicio, fim string, limit, offset int) ([]PixResponse, int, error)
+
+	// CreateDevolucao solicita devolução. O parâmetro 'id' atua como Idempotency-Key.
 	CreateDevolucao(ctx context.Context, e2eid, id, valor string) (*DevolucaoResponse, error)
 
 	// Webhook
+	// ConfigureWebhook registra webhook no PSP. O parâmetro 'chave' atua como Idempotency-Key.
 	ConfigureWebhook(ctx context.Context, chave, url string) error
 	GetWebhook(ctx context.Context, chave string) (*domain.WebhookConfig, error)
 	DeleteWebhook(ctx context.Context, chave string) error

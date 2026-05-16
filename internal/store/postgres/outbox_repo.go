@@ -197,14 +197,16 @@ func (r *OutboxReader) ClaimAndFetch(ctx context.Context, limit int, workerID st
 	defer tx.Rollback(ctx)
 
 	rows, err := tx.Query(ctx,
-		`UPDATE outbox_messages SET claimed_at = NOW(), claimed_by = $1
-		 WHERE id IN (
-			 SELECT id FROM outbox_messages
-			 WHERE published_at IS NULL AND attempts < max_attempts
-			   AND (claimed_at IS NULL OR claimed_at + (lease_timeout || ' seconds')::INTERVAL < NOW())
-			 ORDER BY created_at ASC LIMIT $2 FOR UPDATE SKIP LOCKED
-		 )
-		 RETURNING id, aggregate_type, aggregate_id, event_type, payload, created_at, attempts, max_attempts, last_error`,
+		`WITH locked AS (
+			SELECT id FROM outbox_messages
+			WHERE published_at IS NULL AND attempts < max_attempts
+			  AND (claimed_at IS NULL OR claimed_at + (lease_timeout || ' seconds')::INTERVAL < NOW())
+			ORDER BY created_at ASC LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE outbox_messages SET claimed_at = NOW(), claimed_by = $1
+		FROM locked WHERE outbox_messages.id = locked.id
+		RETURNING outbox_messages.id, aggregate_type, aggregate_id, event_type, payload, created_at, attempts, max_attempts, last_error`,
 		workerID, limit,
 	)
 	if err != nil {

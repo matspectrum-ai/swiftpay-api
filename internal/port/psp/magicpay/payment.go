@@ -3,7 +3,6 @@ package magicpay
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/matspectrum/swiftpay-api/internal/domain"
@@ -61,12 +60,7 @@ type refundResponse struct {
 }
 
 func (c *Client) CreateCob(ctx context.Context, txid string, req psp.CobRequest) (*psp.CobResponse, error) {
-	amountStr := req.Valor.Original
-	amountFloat, err := strconv.ParseFloat(amountStr, 64)
-	if err != nil {
-		return nil, fmt.Errorf("parse amount: %w", err)
-	}
-	amountCents := int64(amountFloat * 100)
+	amountCents := int64(req.Valor.Original)
 
 	magicReq := createPaymentRequest{
 		Amount:          amountCents,
@@ -141,6 +135,8 @@ func (c *Client) ListPix(ctx context.Context, inicio, fim string, limit, offset 
 	return nil, 0, fmt.Errorf("magicpay: ListPix not supported")
 }
 
+// CreateDevolucao solicita devolução. Idempotency: MagicPay uses the payment ID (e2eid)
+// as natural dedup key. Repeated calls with the same e2eid are safe (idempotent).
 func (c *Client) CreateDevolucao(ctx context.Context, e2eid, devID, valor string) (*psp.DevolucaoResponse, error) {
 	var resp refundResponse
 	if err := c.do(ctx, "POST", "/v1/payment/"+e2eid+"/refund", nil, &resp); err != nil {

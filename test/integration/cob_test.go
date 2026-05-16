@@ -33,7 +33,7 @@ func TestCreateCob(t *testing.T) {
 	cob := &domain.Cobranca{
 		TxID:  "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
 		Chave: "matspectrum@gmail.com",
-		Valor: domain.Valor{Original: "10.00"},
+		Valor: domain.Valor{Original: 1000},
 		Devedor: domain.Devedor{
 			Nome: "João Silva",
 			CPF:  "01234567890",
@@ -66,7 +66,7 @@ func TestCreateCobDuplicate(t *testing.T) {
 	cob := &domain.Cobranca{
 		TxID:  "dup1dup2dup3dup4dup5dup6dup789",
 		Chave: "matspectrum@gmail.com",
-		Valor: domain.Valor{Original: "10.00"},
+		Valor: domain.Valor{Original: 1000},
 		Devedor: domain.Devedor{
 			Nome: "João Silva",
 			CPF:  "01234567890",
@@ -99,7 +99,7 @@ func TestGetCob(t *testing.T) {
 	cob := &domain.Cobranca{
 		TxID:  "get1get2get3get4get5get6get789",
 		Chave: "matspectrum@gmail.com",
-		Valor: domain.Valor{Original: "25.50"},
+		Valor: domain.Valor{Original: 2550},
 		Devedor: domain.Devedor{
 			Nome: "Maria Souza",
 			CPF:  "09876543210",
@@ -152,7 +152,7 @@ func TestPatchCob(t *testing.T) {
 	cob := &domain.Cobranca{
 		TxID:  "patchpatchpatchpatchpatch12345",
 		Chave: "matspectrum@gmail.com",
-		Valor: domain.Valor{Original: "50.00"},
+		Valor: domain.Valor{Original: 5000},
 		Devedor: domain.Devedor{
 			Nome: "Carlos Lima",
 			CPF:  "11122233344",

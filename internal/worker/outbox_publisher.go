@@ -163,7 +163,7 @@ func PixRecebidoHandler(ctx context.Context, msg postgres.OutboxMessage) error {
 	}
 	slog.InfoContext(ctx, "evento: pix recebido",
 		"e2eid", pix.E2EID,
-		"valor", pix.Valor,
+		"valor", int64(pix.ValorCentavos),
 	)
 	return nil
 }
@@ -173,10 +173,11 @@ func DevolucaoSolicitadaHandler(ctx context.Context, msg postgres.OutboxMessage)
 	if err := json.Unmarshal(msg.Payload, &dev); err != nil {
 		return fmt.Errorf("deserializando devolução: %w", err)
 	}
-	slog.InfoContext(ctx, "evento: devolução solicitada (processamento assíncrono)",
+	slog.InfoContext(ctx, "evento: devolução solicitada (idempotencia via outbox msg_id)",
 		"id", dev.ID,
 		"e2eid", dev.E2EID,
 		"valor", dev.Valor,
+		"outbox_msg_id", msg.ID,
 	)
 	return nil
 }

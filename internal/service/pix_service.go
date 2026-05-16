@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -58,25 +57,15 @@ func (s *PixService) ProcessPixRecebido(ctx context.Context, pix *domain.PixRece
 				"status_atual", cob.Status,
 				"status_desejado", domain.CobStatusConcluida,
 			)
+		} else if pix.ValorCentavos < cob.Valor.Original {
+			slog.WarnContext(ctx, "pix com valor inferior à cobrança — conclusão recusada",
+				"txid", pix.TxID,
+				"valor_pix", int64(pix.ValorCentavos),
+				"valor_cobranca", int64(cob.Valor.Original),
+			)
 		} else {
-			pixValor, errPix := strconv.ParseFloat(pix.Valor, 64)
-			cobValor, errCob := strconv.ParseFloat(cob.Valor.Original, 64)
-			if errPix != nil || errCob != nil {
-				slog.WarnContext(ctx, "erro convertendo valores para comparação",
-					"txid", pix.TxID,
-					"pix_valor", pix.Valor,
-					"cob_valor", cob.Valor.Original,
-				)
-			} else if pixValor < cobValor {
-				slog.WarnContext(ctx, "pix com valor inferior à cobrança — conclusão recusada",
-					"txid", pix.TxID,
-					"valor_pix", pixValor,
-					"valor_cobranca", cobValor,
-				)
-			} else {
-				if err := s.cobRepo.UpdateStatus(ctx, tx, pix.TxID, domain.CobStatusConcluida, cob.Revisao); err != nil {
-					return fmt.Errorf("atualizando status cobrança: %w", err)
-				}
+			if err := s.cobRepo.UpdateStatus(ctx, tx, pix.TxID, domain.CobStatusConcluida, cob.Revisao); err != nil {
+				return fmt.Errorf("atualizando status cobrança: %w", err)
 			}
 		}
 	}
@@ -89,7 +78,7 @@ func (s *PixService) ProcessPixRecebido(ctx context.Context, pix *domain.PixRece
 		return fmt.Errorf("commit transação pix: %w", err)
 	}
 
-	slog.InfoContext(ctx, "pix recebido processado", "e2eid", pix.E2EID, "valor", pix.Valor)
+	slog.InfoContext(ctx, "pix recebido processado", "e2eid", pix.E2EID, "valor", int64(pix.ValorCentavos))
 	return nil
 }
 
@@ -101,11 +90,14 @@ func (s *PixService) ListPix(ctx context.Context, filter domain.PixFilter) ([]do
 	return s.pixRepo.List(ctx, filter)
 }
 
-func (s *PixService) CreateDevolucao(ctx context.Context, e2eid, devID, valor string) (*domain.Devolucao, error) {
+func (s *PixService) CreateDevolucao(ctx context.Context, e2eid, devID, valorStr string) (*domain.Devolucao, error) {
 	existing, err := s.pixRepo.GetByE2EID(ctx, e2eid)
 	if err != nil {
 		return nil, fmt.Errorf("pix nao encontrado para devolucao: %w", err)
 	}
+
+	var valor domain.ValorCentavos
+	valor.UnmarshalJSON([]byte(`"` + valorStr + `"`))
 
 	dev := &domain.Devolucao{
 		ID:      devID,

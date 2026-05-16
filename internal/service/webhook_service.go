@@ -181,7 +181,7 @@ func (s *WebhookService) HandleCallback(ctx context.Context, payload []byte) err
 
 	slog.InfoContext(ctx, "pix recebido processado",
 		"e2eid", pix.E2EID,
-		"valor", pix.Valor,
+		"valor", int64(pix.ValorCentavos),
 	)
 	return nil
 }
