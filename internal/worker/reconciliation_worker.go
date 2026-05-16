@@ -72,7 +72,7 @@ func (w *ReconciliationWorker) Start(ctx context.Context, schedule string) error
 }
 
 func (w *ReconciliationWorker) run(ctx context.Context) error {
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 	defer func() {
 		observability.ReconciliationDuration.Observe(time.Since(startTime).Seconds())
 	}()

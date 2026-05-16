@@ -104,7 +104,7 @@ func (s *CobService) CreateCob(ctx context.Context, cob *domain.Cobranca) (*doma
 		SolPagador: cob.SolicitacaoPagador,
 	}
 
-	pspStart := time.Now()
+	pspStart := time.Now().UTC()
 	pspResp, err := s.pspClient.CreateCob(ctx, cob.TxID, cobReq)
 	observability.PSPLatency.WithLabelValues("create_cob").Observe(time.Since(pspStart).Seconds())
 
@@ -164,7 +164,7 @@ func (s *CobService) UpdateCob(ctx context.Context, txid string, cob *domain.Cob
 		SolPagador: cob.SolicitacaoPagador,
 	}
 
-	pspStart := time.Now()
+	pspStart := time.Now().UTC()
 	pspResp, err := s.pspClient.UpdateCob(ctx, txid, cobReq)
 	observability.PSPLatency.WithLabelValues("update_cob").Observe(time.Since(pspStart).Seconds())
 

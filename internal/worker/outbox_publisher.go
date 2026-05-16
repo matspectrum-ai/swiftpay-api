@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,6 +21,7 @@ type OutboxPublisher struct {
 	handlers       map[string]OutboxHandler
 	pollInterval   time.Duration
 	retryConfig    RetryConfig
+	wg             sync.WaitGroup
 }
 
 type OutboxHandler func(ctx context.Context, msg postgres.OutboxMessage) error
@@ -49,14 +51,20 @@ func (p *OutboxPublisher) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			slog.InfoContext(ctx, "outbox publisher parando")
+			slog.InfoContext(ctx, "outbox publisher parando — aguardando lote em voo")
+			p.wg.Wait()
+			slog.InfoContext(ctx, "outbox publisher parado com sucesso")
 			return ctx.Err()
 		case <-ticker.C:
 			p.updateOutboxLag(ctx)
-			if err := p.processBatch(ctx); err != nil {
-				observability.WorkerErrors.WithLabelValues("outbox_publisher").Inc()
-				slog.ErrorContext(ctx, "erro processando batch outbox", "error", err)
-			}
+			p.wg.Add(1)
+			go func() {
+				defer p.wg.Done()
+				if err := p.processBatch(ctx); err != nil {
+					observability.WorkerErrors.WithLabelValues("outbox_publisher").Inc()
+					slog.ErrorContext(ctx, "erro processando batch outbox", "error", err)
+				}
+			}()
 		}
 	}
 }

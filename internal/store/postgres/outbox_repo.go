@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -289,6 +290,30 @@ func (r *OutboxReader) MoveToDeadLetter(ctx context.Context, msg OutboxMessage) 
 	}
 
 	return nil
+}
+
+// PruneOldMessages remove mensagens do outbox publicadas há mais de 'retention' dias.
+func (r *OutboxReader) PruneOldMessages(ctx context.Context, retentionDays int) (int64, error) {
+	tag, err := r.db.Exec(ctx,
+		`DELETE FROM outbox_messages WHERE published_at IS NOT NULL AND published_at < NOW() - ($1 || ' days')::INTERVAL`,
+		strconv.Itoa(retentionDays),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("removendo mensagens antigas: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
+// PruneOldDeadLetters remove registros de deadletter antigos.
+func (r *OutboxReader) PruneOldDeadLetters(ctx context.Context, retentionDays int) (int64, error) {
+	tag, err := r.db.Exec(ctx,
+		`DELETE FROM outbox_dead_letter WHERE moved_at < NOW() - ($1 || ' days')::INTERVAL`,
+		strconv.Itoa(retentionDays),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("removendo deadletters antigos: %w", err)
+	}
+	return tag.RowsAffected(), nil
 }
 
 // GenerateWorkerID gera um identificador único de worker.

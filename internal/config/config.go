@@ -24,7 +24,8 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration `env:"SERVER_SHUTDOWN_TIMEOUT" envDefault:"30s"`
 }
 
-// DatabaseConfig configurações do PostgreSQL.
+// DatabaseConfig configurações do PostgreSQL. Pool tuning via MaxOpenConns/MinConns.
+// Use DB_MAX_OPEN_CONNS=20 em produção para evitar sobrecarga do PostgreSQL.
 type DatabaseConfig struct {
 	Host     string `env:"DB_HOST" envDefault:"localhost"`
 	Port     string `env:"DB_PORT" envDefault:"5432"`

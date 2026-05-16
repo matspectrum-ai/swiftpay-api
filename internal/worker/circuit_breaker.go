@@ -65,7 +65,7 @@ func (cb *CircuitBreaker) Execute(ctx context.Context, fn func() error) error {
 
 	if err != nil {
 		cb.failureCount++
-		cb.lastFailure = time.Now()
+		cb.lastFailure = time.Now().UTC()
 		if cb.failureCount >= cb.threshold {
 			cb.state = CircuitOpen
 		}

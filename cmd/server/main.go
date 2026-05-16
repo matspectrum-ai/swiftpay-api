@@ -120,6 +120,13 @@ func main() {
 		}
 	}()
 
+	cleanupWorker := worker.NewCleanupWorker(outboxReader, idempotencyRepo, 1*time.Hour, 7)
+	go func() {
+		if err := cleanupWorker.Start(workerCtx); err != nil {
+			slog.ErrorContext(ctx, "cleanup worker parou", "error", err)
+		}
+	}()
+
 	reconciliationWorker := worker.NewReconciliationWorker(pool, pixRepo, pspClient, leaderElection, 10)
 	if err := reconciliationWorker.Start(workerCtx, cfg.Worker.ReconciliationSchedule); err != nil {
 		slog.ErrorContext(ctx, "erro iniciando reconciliation worker", "error", err)

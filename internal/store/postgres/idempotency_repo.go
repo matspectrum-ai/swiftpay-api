@@ -58,7 +58,7 @@ func (r *IdempotencyRepo) Acquire(ctx context.Context, key, endpointPath, reques
 			EndpointPath:   endpointPath,
 			RequestHash:    requestHash,
 			Status:         "in_progress",
-			StartedAt:      time.Now(),
+			StartedAt:      time.Now().UTC(),
 		}, nil
 	}
 

@@ -20,7 +20,7 @@ type HealthResponse struct {
 	Timestamp time.Time         `json:"timestamp"`
 }
 
-var startTime = time.Now()
+var startTime = time.Now().UTC()
 
 func NewHealthHandler(db *pgxpool.Pool) *HealthHandler {
 	return &HealthHandler{db: db}
@@ -51,7 +51,7 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 		Version:   "1.0.0",
 		Uptime:    time.Since(startTime).String(),
 		Checks:    checks,
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UTC(),
 	}
 
 	status := http.StatusOK

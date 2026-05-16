@@ -25,7 +25,7 @@ func (m *MockPSP) CreateCob(ctx context.Context, txid string, req psp.CobRequest
 	m.cobs.mu.Lock()
 	defer m.cobs.mu.Unlock()
 
-	now := time.Now()
+	now := time.Now().UTC()
 	location := fmt.Sprintf("https://pix.example.com/api/v2/cob/%s", txid)
 	pixCopiaECola := fmt.Sprintf("00020101021126360014br.gov.bcb.pix0114%s5204000053039865802BR5925Recebedor%%20Mock6009Sao%%20Paulo62070503***6304A1B2",
 		txid)

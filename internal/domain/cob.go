@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -67,7 +68,13 @@ func (v *ValorCentavos) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("valor inválido: %s", s)
 	}
-	*v = ValorCentavos(int64(f * 100.0))
+	if f < 0 {
+		return fmt.Errorf("valor não pode ser negativo: %s", s)
+	}
+	if f > 999999999.99 {
+		return fmt.Errorf("valor excede limite máximo: %s", s)
+	}
+	*v = ValorCentavos(int64(math.Round(f * 100.0)))
 	return nil
 }
 

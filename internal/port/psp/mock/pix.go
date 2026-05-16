@@ -125,7 +125,7 @@ func (m *MockPSP) CreateDevolucao(ctx context.Context, e2eid, id, valor string) 
 		id = uuid.New().String()
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	dev := &devolucaoRecord{
 		ID:      id,
 		E2EID:   e2eid,
@@ -151,7 +151,7 @@ func (s *MockPixStore) AddPix(e2eid, txid, valor string) {
 		E2EID:             e2eid,
 		TxID:              txid,
 		Valor:             valor,
-		HorarioLiquidacao: time.Now(),
+		HorarioLiquidacao: time.Now().UTC(),
 		PagadorNome:       "João Silva",
 		PagadorCPF:        "01234567890",
 	}

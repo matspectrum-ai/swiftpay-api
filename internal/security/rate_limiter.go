@@ -32,11 +32,11 @@ func (rl *RateLimiter) Allow(key string) bool {
 
 	b, ok := rl.buckets[key]
 	if !ok {
-		b = &tokenBucket{tokens: float64(rl.capacity), lastTime: time.Now()}
+		b = &tokenBucket{tokens: float64(rl.capacity), lastTime: time.Now().UTC()}
 		rl.buckets[key] = b
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	elapsed := now.Sub(b.lastTime).Seconds()
 	b.tokens += elapsed * rl.rate
 	if b.tokens > float64(rl.capacity) {
@@ -60,7 +60,7 @@ func (rl *RateLimiter) Cleanup(ctx context.Context, maxAge time.Duration) {
 			return
 		case <-ticker.C:
 			rl.mu.Lock()
-			cutoff := time.Now().Add(-maxAge)
+			cutoff := time.Now().UTC().Add(-maxAge)
 			for k, b := range rl.buckets {
 				if b.lastTime.Before(cutoff) {
 					delete(rl.buckets, k)
