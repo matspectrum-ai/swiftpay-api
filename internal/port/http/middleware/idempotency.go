@@ -103,6 +103,14 @@ func IdempotencyMiddleware(repo *postgres.IdempotencyRepo) func(http.Handler) ht
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			rw := newCaptureResponseWriter(w)
 			next.ServeHTTP(rw, r)
+
+			if completeErr := repo.Complete(r.Context(), key, endpointPath, rw.statusCode, rw.body.Bytes()); completeErr != nil {
+				slog.ErrorContext(r.Context(), "falha ao completar idempotência",
+					"key", key,
+					"path", endpointPath,
+					"error", completeErr,
+				)
+			}
 		})
 	}
 }

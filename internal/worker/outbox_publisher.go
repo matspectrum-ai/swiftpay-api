@@ -100,9 +100,7 @@ func (p *OutboxPublisher) processBatch(ctx context.Context) error {
 			continue
 		}
 
-		handlerErr := RetryWithBackoff(ctx, p.retryConfig, func() error {
-			return handler(ctx, msg)
-		})
+		handlerErr := handler(ctx, msg)
 
 		if handlerErr != nil {
 			observability.RetryCount.WithLabelValues("outbox", "failure").Inc()
@@ -175,10 +173,21 @@ func DevolucaoSolicitadaHandler(ctx context.Context, msg postgres.OutboxMessage)
 	if err := json.Unmarshal(msg.Payload, &dev); err != nil {
 		return fmt.Errorf("deserializando devolução: %w", err)
 	}
-	slog.InfoContext(ctx, "evento: devolução solicitada",
+	slog.InfoContext(ctx, "evento: devolução solicitada (processamento assíncrono)",
 		"id", dev.ID,
 		"e2eid", dev.E2EID,
 		"valor", dev.Valor,
+	)
+	return nil
+}
+
+func WebhookConfiguradoHandler(ctx context.Context, msg postgres.OutboxMessage) error {
+	var wc domain.WebhookConfig
+	if err := json.Unmarshal(msg.Payload, &wc); err != nil {
+		return fmt.Errorf("deserializando webhook: %w", err)
+	}
+	slog.InfoContext(ctx, "evento: webhook configurado (pendente registro PSP)",
+		"chave", wc.Chave,
 	)
 	return nil
 }

@@ -107,6 +107,7 @@ func main() {
 	outboxPublisher.RegisterHandler("CobrancaAtualizada", worker.CobrancaAtualizadaHandler)
 	outboxPublisher.RegisterHandler("PixRecebido", worker.PixRecebidoHandler)
 	outboxPublisher.RegisterHandler("DevolucaoSolicitada", worker.DevolucaoSolicitadaHandler)
+	outboxPublisher.RegisterHandler("WebhookConfigurado", worker.WebhookConfiguradoHandler)
 
 	leaderElection := worker.NewLeaderElection(pool)
 

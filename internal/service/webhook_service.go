@@ -49,25 +49,31 @@ func (s *WebhookService) ConfigureWebhook(ctx context.Context, chave, webhookURL
 		return nil, domain.FormatValidationError("url de webhook inválida: %s", webhookURL)
 	}
 
-	if err := s.pspClient.ConfigureWebhook(ctx, chave, webhookURL); err != nil {
-		return nil, fmt.Errorf("psp configurar webhook: %w", err)
-	}
-
 	wc := &domain.WebhookConfig{
 		Chave:      chave,
 		WebhookURL: webhookURL,
-		Status:     "ATIVO",
+		Status:     "PENDENTE",
 	}
 
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("iniciando transação webhook: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	if err := s.webhookRepo.Upsert(ctx, wc); err != nil {
-		slog.ErrorContext(ctx, "CRÍTICO: webhook configurado no PSP mas falha ao persistir localmente",
-			"chave", chave,
-			"error", err,
-		)
 		return nil, fmt.Errorf("salvando webhook local: %w", err)
 	}
 
-	slog.InfoContext(ctx, "webhook configurado", "chave", chave)
+	if err := s.outboxWriter.Write(ctx, tx, "webhook", chave, "WebhookConfigurado", wc); err != nil {
+		return nil, fmt.Errorf("escrevendo outbox webhook: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit transação webhook: %w", err)
+	}
+
+	slog.InfoContext(ctx, "webhook configurado (pendente PSP)", "chave", chave)
 	return wc, nil
 }
 

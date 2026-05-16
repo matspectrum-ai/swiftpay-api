@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -51,9 +52,31 @@ func (s *PixService) ProcessPixRecebido(ctx context.Context, pix *domain.PixRece
 		cob, err := s.cobRepo.GetByTxID(ctx, pix.TxID)
 		if err != nil {
 			slog.WarnContext(ctx, "cobrança não encontrada para pix", "txid", pix.TxID)
-		} else if cob.Status.CanTransitionTo(domain.CobStatusConcluida) {
-			if err := s.cobRepo.UpdateStatus(ctx, tx, pix.TxID, domain.CobStatusConcluida, cob.Revisao); err != nil {
-				return fmt.Errorf("atualizando status cobrança: %w", err)
+		} else if !cob.Status.CanTransitionTo(domain.CobStatusConcluida) {
+			slog.WarnContext(ctx, "transição FSM inválida ignorada",
+				"txid", pix.TxID,
+				"status_atual", cob.Status,
+				"status_desejado", domain.CobStatusConcluida,
+			)
+		} else {
+			pixValor, errPix := strconv.ParseFloat(pix.Valor, 64)
+			cobValor, errCob := strconv.ParseFloat(cob.Valor.Original, 64)
+			if errPix != nil || errCob != nil {
+				slog.WarnContext(ctx, "erro convertendo valores para comparação",
+					"txid", pix.TxID,
+					"pix_valor", pix.Valor,
+					"cob_valor", cob.Valor.Original,
+				)
+			} else if pixValor < cobValor {
+				slog.WarnContext(ctx, "pix com valor inferior à cobrança — conclusão recusada",
+					"txid", pix.TxID,
+					"valor_pix", pixValor,
+					"valor_cobranca", cobValor,
+				)
+			} else {
+				if err := s.cobRepo.UpdateStatus(ctx, tx, pix.TxID, domain.CobStatusConcluida, cob.Revisao); err != nil {
+					return fmt.Errorf("atualizando status cobrança: %w", err)
+				}
 			}
 		}
 	}
@@ -84,16 +107,11 @@ func (s *PixService) CreateDevolucao(ctx context.Context, e2eid, devID, valor st
 		return nil, fmt.Errorf("pix nao encontrado para devolucao: %w", err)
 	}
 
-	pspResp, err := s.pspClient.CreateDevolucao(ctx, e2eid, devID, valor)
-	if err != nil {
-		return nil, fmt.Errorf("psp solicitar devolucao: %w", err)
-	}
-
 	dev := &domain.Devolucao{
-		ID:      pspResp.ID,
-		E2EID:   pspResp.E2EID,
-		Valor:   pspResp.Valor,
-		Status:  pspResp.Status,
+		ID:      devID,
+		E2EID:   e2eid,
+		Valor:   valor,
+		Status:  "PENDENTE",
 		Horario: existing.HorarioLiquidacao,
 	}
 
@@ -115,6 +133,6 @@ func (s *PixService) CreateDevolucao(ctx context.Context, e2eid, devID, valor st
 		return nil, fmt.Errorf("commit transação devolucao: %w", err)
 	}
 
-	slog.InfoContext(ctx, "devolução solicitada", "e2eid", e2eid, "devolucao_id", dev.ID)
+	slog.InfoContext(ctx, "devolução solicitada (pendente PSP)", "e2eid", e2eid, "devolucao_id", dev.ID)
 	return dev, nil
 }
