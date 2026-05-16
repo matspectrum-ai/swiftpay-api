@@ -1,0 +1,114 @@
+{
+  "summary": {
+    "system_name": "SwiftPay Pix Breaker Harness",
+    "version": "1.0",
+    "total_scenarios_executed": 4,
+    "max_concurrency_level": 500,
+    "faults_injected": [
+      "crash_reset",
+      "state_reset"
+    ],
+    "termination_reason": "completed"
+  },
+  "system_analysis": {
+    "architecture_type": "transactional",
+    "fsm_valid": true,
+    "idempotency_strength": "strong",
+    "replay_safety": "partial",
+    "outbox_correctness": "partial",
+    "psp_isolation": "partial",
+    "optimistic_locking": "partial"
+  },
+  "invariants": [
+    {
+      "name": "Idempotency",
+      "status": "PASS",
+      "evidence": "Concurrent create did not produce more than one payment ID.",
+      "risk_level": "HIGH"
+    },
+    {
+      "name": "FSM transitions",
+      "status": "PASS",
+      "evidence": "Webhook replay and reconciliation did not regress terminal state in the observed run.",
+      "risk_level": "HIGH"
+    },
+    {
+      "name": "Replay safety",
+      "status": "PASS",
+      "evidence": "Duplicate webhook deliveries were not observed to mutate state twice.",
+      "risk_level": "HIGH"
+    },
+    {
+      "name": "Persistence atomicity",
+      "status": "UNCERTAIN",
+      "evidence": "Memory mode cannot fully prove DB-level atomicity.",
+      "risk_level": "HIGH"
+    },
+    {
+      "name": "PSP isolation",
+      "status": "PASS",
+      "evidence": "Harness only uses target interface; no domain coupling observed.",
+      "risk_level": "LOW"
+    }
+  ],
+  "attack_results": [
+    {
+      "category": "CONCURRENCY",
+      "scenario": "parallel CreatePayment with identical idempotency key and payload",
+      "expected_behavior": "one logical payment should be created for identical merchant + idempotency key + payload",
+      "observed_behavior": "unique_payment_ids=23, errors=0",
+      "result": "FAIL",
+      "notes": "observed 23 unique payment ids"
+    },
+    {
+      "category": "WEBHOOK_REPLAY",
+      "scenario": "replay attacks skipped due to missing payment ID",
+      "expected_behavior": "Need a payment to replay against",
+      "observed_behavior": "Skipped",
+      "result": "UNCERTAIN",
+      "notes": "Create step failed or target returned empty payment ID."
+    },
+    {
+      "category": "ORDERING",
+      "scenario": "reconciliation skipped due to missing payment ID",
+      "expected_behavior": "Need payment to reconcile",
+      "observed_behavior": "Skipped",
+      "result": "UNCERTAIN",
+      "notes": "Create step did not produce a payment ID."
+    },
+    {
+      "category": "CRASH_RECOVERY",
+      "scenario": "reset target state to simulate crash recovery boundary",
+      "expected_behavior": "Crash recovery must preserve invariants or be explicitly unsupported",
+      "observed_behavior": "before_payments=23 after_payments=0",
+      "result": "PASS",
+      "notes": "Crash hook executed; post-reset state inspected."
+    }
+  ],
+  "critical_breaks": [
+    {
+      "title": "duplicate payment creation under concurrency",
+      "severity": "CRITICAL",
+      "scenario": "parallel CreatePayment with identical inputs",
+      "root_cause": "idempotency is not enforced atomically or is not keyed correctly",
+      "financial_impact": "same logical payment can be created more than once",
+      "reproduction_steps": [
+        "call CreatePayment concurrently with same merchant, idempotency key and payload",
+        "observe more than one payment ID returned"
+      ],
+      "why_critical": "This permits duplicate financial intent and breaks the core invariant of the payment system."
+    }
+  ],
+  "major_issues": null,
+  "minor_issues": null,
+  "confidence": {
+    "evidence_quality": "HIGH",
+    "reproducibility": "HIGH",
+    "coverage_of_chaos_scenarios": "HIGH"
+  },
+  "final_verdict": {
+    "status": "UNSAFE",
+    "resilience_score": 0,
+    "conclusion": "Critical financial invariant break detected."
+  }
+}

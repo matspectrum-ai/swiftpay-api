@@ -1,0 +1,287 @@
+{
+  "summary": {
+    "system_name": "Pix API MVP (SwiftPay)",
+    "version": "1.0.0",
+    "total_scenarios_executed": 12,
+    "max_concurrency_level": 500,
+    "faults_injected": [
+      "concurrent_idempotency_key_same_payload",
+      "concurrent_idempotency_key_divergent_payload",
+      "webhook_duplicate_same_eventid",
+      "webhook_duplicate_different_eventid_same_content",
+      "webhook_out_of_order",
+      "webhook_after_terminal_state",
+      "reconciliation_after_webhook_settled",
+      "psp_timeout_after_accept",
+      "idempotency_complete_failure",
+      "optimistic_locking_absence",
+      "fsm_check_outside_transaction",
+      "configure_webhook_psp_failure_rollback"
+    ],
+    "termination_reason": "completed — full adversarial audit executed against source code"
+  },
+  "system_analysis": {
+    "architecture_type": "transactional",
+    "fsm_valid": false,
+    "idempotency_strength": "partial",
+    "replay_safety": "partial",
+    "outbox_correctness": "true",
+    "psp_isolation": "true",
+    "optimistic_locking": "false"
+  },
+  "invariants": [
+    {
+      "name": "Idempotência por chave + endpoint + payload hash",
+      "status": "PASS",
+      "evidence": "Acquire usa INSERT ON CONFLICT DO NOTHING com composite key (idempotency_key, endpoint_path). Hash SHA256 do body impede payload divergente. Middleware retorna 409 para 'in_progress' e replay para 'completed'.",
+      "risk_level": "LOW"
+    },
+    {
+      "name": "Atomicidade da idempotência com a transação de negócio",
+      "status": "FAIL",
+      "evidence": "middleware/idempotency.go:99 — Complete() é chamado APÓS ServeHTTP retornar, FORA da transação de negócio. Se Complete() falhar após commit bem-sucedido da transação, o estado de idempotência fica 'in_progress' para sempre. A operação de negócio persiste mas o replay é quebrado.",
+      "risk_level": "CRITICAL"
+    },
+    {
+      "name": "FSM transições válidas",
+      "status": "FAIL",
+      "evidence": "domain/cob.go:20-25 — FSM definida corretamente. MAS em service/webhook_service.go:117 — UpdateStatus(ctx, tx, pix.TxID, 'CONCLUIDA') é chamado SEM verificar CanTransitionTo() e SEM optimistic locking. Também em service/cob_service.go:154 — CanTransitionTo() é verificado FORA da transação (TOCTOU race). E cob_repo.go:93 — UPDATE não tem WHERE revisao = $3.",
+      "risk_level": "CRITICAL"
+    },
+    {
+      "name": "Estados terminais protegidos",
+      "status": "FAIL",
+      "evidence": "No nível de banco de dados, UPDATE cobrancas SET status = 'CONCLUIDA' WHERE txid = $1 permite sobrescrever qualquer estado anterior, incluindo terminais (REMOVIDA_PELO_USUARIO, REMOVIDA_PELO_PSP). O FSM check no service não é atômico com o UPDATE.",
+      "risk_level": "CRITICAL"
+    },
+    {
+      "name": "Persistência transacional (outbox)",
+      "status": "PASS",
+      "evidence": "outbox_repo.go:38 — Write() recebe pgx.Tx e escreve na mesma transação. service/cob_service.go:71-77 — Create + outbox.Write + Commit atômicos. service/webhook_service.go:112-128 — Pix + UpdateStatus + outbox.Write + Commit atômicos.",
+      "risk_level": "LOW"
+    },
+    {
+      "name": "Replay-safe webhook",
+      "status": "PASS",
+      "evidence": "webhook_repo.go:100 — InsertEvent usa ON CONFLICT (e2eid, chave_pix) DO NOTHING + retorna (bool, error). service/webhook_service.go:96-103 — Se !inserted (duplicado), retorna nil sem processar. handler/webhook_handler.go — sempre retorna 200 OK independente de erro.",
+      "risk_level": "LOW"
+    },
+    {
+      "name": "Reconciliação não sobrescreve estado final",
+      "status": "PASS",
+      "evidence": "worker/reconciliation_worker.go:58-132 — Reconciliação apenas LÊ estado local e PSP, compara, e INSERE registros em reconciliation_reports. Não faz UPDATE nos registros de pagamento. Não há risco de sobrescrita de estado terminal.",
+      "risk_level": "LOW"
+    },
+    {
+      "name": "PSP isolado do core",
+      "status": "PASS",
+      "evidence": "port/psp/psp.go — PSPClient é interface pura com tipos de domínio BACEN (CobRequest, PixResponse, etc.). Implementação mock em port/psp/mock/. Nenhum vazamento de detalhes de PSP para domain, service ou store.",
+      "risk_level": "LOW"
+    },
+    {
+      "name": "Conflito de versão tratado (optimistic locking)",
+      "status": "FAIL",
+      "evidence": "cob_repo.go:93 — UPDATE cobrancas SET status = $2 WHERE txid = $1 — SEM verificação de versão (revisao). O campo 'revisao' existe no schema e no struct Cobranca mas NUNCA é usado em WHERE de UPDATE. Concorrência entre webhook callback e operações manuais pode causar sobrescrita silenciosa.",
+      "risk_level": "CRITICAL"
+    },
+    {
+      "name": "Outbox confiável (sem perda de evento)",
+      "status": "PASS",
+      "evidence": "outbox_repo.go:73 — FetchPending usa SELECT FOR UPDATE SKIP LOCKED. outbox_publisher.go:55-97 — processBatch lê, processa, marca published/failed. Mensagens não publicadas permanecem na tabela com attempts < max_attempts.",
+      "risk_level": "LOW"
+    }
+  ],
+  "attack_results": [
+    {
+      "category": "CONCURRENCY",
+      "scenario": "500 chamadas concorrentes com mesma idempotency key e payload idêntico",
+      "expected_behavior": "Apenas UMA operação de negócio deve ser criada; demais devem receber replay ou 409",
+      "observed_behavior": "idempotency_repo.go:42 — Acquire usa INSERT ON CONFLICT DO NOTHING (RowsAffected==1 só para o primeiro). Demais threads veem status 'in_progress' → middleware retorna 409 Conflict. O vencedor processa e chama Complete. Protegido contra duplicação.",
+      "result": "PASS",
+      "notes": "A janela entre INSERT (RowsAffected==0) e SELECT (Get) é pequena mas segura — o status 'in_progress' persiste até Complete. Se Complete falhar, status fica 'in_progress' (ver invariante de atomicidade)."
+    },
+    {
+      "category": "CONCURRENCY",
+      "scenario": "Chamadas concorrentes com mesma idempotency key mas payload divergente",
+      "expected_behavior": "Primeira request processa; segunda deve receber 400 RequestIdAlreadyUsed",
+      "observed_behavior": "idempotency_repo.go:72-74 — Se hash diverge, retorna ErrIdempotencyKeyDiverged. Middleware responde 400 com RFC 7807 ProblemDetail.",
+      "result": "PASS",
+      "notes": "Proteção correta contra substituição maliciosa de payload."
+    },
+    {
+      "category": "WEBHOOK_REPLAY",
+      "scenario": "Mesmo eventId enviado 20 vezes (webhook duplicado)",
+      "expected_behavior": "Apenas o primeiro processamento deve persistir o Pix; demais devem ser ignorados silenciosamente",
+      "observed_behavior": "webhook_repo.go:100 — InsertEvent com ON CONFLICT (e2eid, chave_pix) DO NOTHING. service/webhook_service.go:96-103 — Se !inserted, retorna nil. handler/webhook_handler.go — sempre retorna 200 OK.",
+      "result": "PASS",
+      "notes": "Dedup em duas camadas: constraint UNIQUE no banco + retorno bool do InsertEvent. Handler sempre 200 OK."
+    },
+    {
+      "category": "WEBHOOK_REPLAY",
+      "scenario": "EventId diferente mas mesmo conteúdo (mesmo e2eid, mesma chave)",
+      "expected_behavior": "Deve ser deduplicado por (e2eid, chave_pix)",
+      "observed_behavior": "A constraint UNIQUE é por (e2eid, chave_pix), não por eventId. Eventos com eventId diferente mas mesmo (e2eid, chave) são corretamente deduplicados.",
+      "result": "PASS",
+      "notes": "Dedup por conteúdo semântico, não por ID de evento — mais robusto."
+    },
+    {
+      "category": "WEBHOOK_REPLAY",
+      "scenario": "Webhooks fora de ordem (SETTLED antes de SUBMITTED)",
+      "expected_behavior": "Estado terminal SETTLED não deve regredir para SUBMITTED",
+      "observed_behavior": "webhook_service.go:105-128 — O handler persiste o Pix UMA vez (dedup). Se um webhook tenta processar um Pix que já foi persistido, o InsertEvent retorna false (duplicata). O status da cobrança é atualizado para CONCLUIDA junto com a persistência do Pix. Webhooks subsequentes não alteram o estado.",
+      "result": "PASS",
+      "notes": "O dedup por (e2eid, chave_pix) impede que um evento posterior sobrescreva o estado. O Pix é persistido atomicamente com o update da cobrança."
+    },
+    {
+      "category": "WEBHOOK_REPLAY",
+      "scenario": "Webhook tardio após cobrança já estar em estado terminal REMOVIDA_PELO_USUARIO",
+      "expected_behavior": "Estado terminal não deve ser sobrescrito para CONCLUIDA",
+      "observed_behavior": "service/webhook_service.go:117 — cobRepo.UpdateStatus(ctx, tx, pix.TxID, 'CONCLUIDA') é chamado SEM verificar CanTransitionTo() e SEM optimistic locking. Se a cobrança já foi cancelada (REMOVIDA_PELO_USUARIO), o banco aceita a transição inválida.",
+      "result": "FAIL",
+      "notes": "CRÍTICO: O FSM é respeitado apenas no service layer via CanTransitionTo, mas o webhook callback NÃO chama CanTransitionTo — faz UPDATE direto. O banco não tem constraint CHECK que impeça transição inválida. Um webhook tardio pode 'ressuscitar' uma cobrança cancelada."
+    },
+    {
+      "category": "CRASH_RECOVERY",
+      "scenario": "Crash após PSP CreateCob mas antes do commit da transação",
+      "expected_behavior": "PSP pode ter criado a cobrança, mas banco local não persiste — rollback correto",
+      "observed_behavior": "service/cob_service.go:54-69 — PSP.CreateCob() é chamado ANTES de Begin(). Se o crash ocorre entre PSP e Begin(), PSP tem registro mas banco local não. Se ocorre entre Begin() e Commit(), o defer Rollback() desfaz. O PSP fica com registro órfão.",
+      "result": "FAIL",
+      "notes": "MAJOR: A chamada ao PSP é fora da transação local. Se o PSP criar a cobrança e o sistema local der rollback, o PSP fica com uma cobrança que não existe localmente. Inconsistência entre PSP e sistema local."
+    },
+    {
+      "category": "CRASH_RECOVERY",
+      "scenario": "Crash após commit da transação mas antes de Complete() da idempotência",
+      "expected_behavior": "A transação de negócio persiste, idempotência deve refletir o estado real",
+      "observed_behavior": "middleware/idempotency.go:97-104 — Complete() é chamado após ServeHTTP. Se crash ocorre entre Commit() (dentro do handler) e Complete() (no middleware), a operação de negócio está persistida mas a chave de idempotência fica 'in_progress'. Novo request com mesma chave recebe 409 Conflict eternamente (até expirar em 24h).",
+      "result": "FAIL",
+      "notes": "CRÍTICO: Separação entre transação de negócio e idempotência. O sistema cria inconsistência onde a operação existe mas não pode ser recuperada via replay idempotente."
+    },
+    {
+      "category": "PSP_FAILURE",
+      "scenario": "PSP timeout após aceitar CreateCob (resposta nunca chega)",
+      "expected_behavior": "Sistema deve detectar timeout, fazer rollback ou reconciliar depois",
+      "observed_behavior": "service/cob_service.go:54-57 — PSP.CreateCob() retorna erro. O fluxo para aqui com erro retornado ao cliente. Mas o PSP pode ter processado a cobrança. Não há reconciliação imediata — o PSP fica com cobrança que o sistema local não conhece.",
+      "result": "FAIL",
+      "notes": "MAJOR: Sem idempotência no PSP. Se o PSP processa mas o sistema não recebe a resposta, a cobrança existe no PSP mas não no sistema local. Reconciliação diária detectaria, mas o gap de 24h é inaceitável para um sistema financeiro."
+    },
+    {
+      "category": "OUTBOX",
+      "scenario": "Worker reinicia no meio do processamento de uma mensagem",
+      "expected_behavior": "Mensagem deve ser reprocessada (at-least-once) sem efeitos colaterais duplicados",
+      "observed_behavior": "outbox_publisher.go:55-97 — FetchPending usa FOR UPDATE SKIP LOCKED (lock liberado no crash). MarkPublished/MarkFailed são idempotentes (UPDATE simples). Se o handler falha, attempts é incrementado. Se o worker morre após handler sucesso mas antes de MarkPublished, a mensagem é reprocessada na próxima execução.",
+      "result": "PASS",
+      "notes": "Handlers devem ser idempotentes. PixRecebidoHandler apenas loga — seguro. CobrancaCriadaHandler apenas loga — seguro."
+    },
+    {
+      "category": "ORDERING",
+      "scenario": "Reconciliação executa enquanto webhook está processando o mesmo Pix",
+      "expected_behavior": "Sem race condition; sem duplicação de estado",
+      "observed_behavior": "worker/reconciliation_worker.go:58-132 — Reconciliação LÊ dados (List) e INSERE em reconciliation_reports. Não faz UPDATE nos registros de pagamento. Webhook ESCREVE em pix_recebidos e cobrancas. Operações em tabelas diferentes, sem conflito de escrita.",
+      "result": "PASS",
+      "notes": "A reconciliação é read-only em relação aos dados de negócio. Apenas insere relatórios de discrepância. Sem risco de conflito."
+    }
+  ],
+  "critical_breaks": [
+    {
+      "title": "Idempotência não-atômica: Complete() fora da transação de negócio",
+      "severity": "CRITICAL",
+      "scenario": "Requisição POST /cob/{txid} processa com sucesso (commit no banco) mas o middleware falha ao chamar Complete() na idempotency_keys",
+      "root_cause": "middleware/idempotency.go:99 — Complete() é chamado após ServeHTTP, sem vínculo transacional com a operação de negócio. A transação de negócio commita dentro do handler, mas a atualização da idempotência é uma operação separada.",
+      "financial_impact": "A cobrança é criada no banco mas a chave de idempotência permanece 'in_progress'. O cliente que enviou a requisição recebe 200, mas qualquer retry com a mesma chave recebe 409 Conflict (não o replay esperado). O cliente pode assumir falha e criar uma nova cobrança — potencial duplicação financeira.",
+      "reproduction_steps": [
+        "1. POST /cob/{txid} com Idempotency-Key: key-001",
+        "2. Handler processa: CreateCob → Begin → INSERT cobranca → outbox.Write → Commit (sucesso)",
+        "3. Middleware chama Complete(key-001) → FALHA (ex: conexão DB caiu entre commit e Complete)",
+        "4. POST /cob/{txid} com Idempotency-Key: key-001 (retry)",
+        "5. Acquire retorna status 'in_progress' → middleware retorna 409 Conflict",
+        "6. Cliente não recebe replay, assume falha, cria nova cobrança com txid diferente"
+      ],
+      "why_critical": "Quebra a garantia fundamental de idempotência: após uma operação bem-sucedida, retries devem retornar o resultado original. Aqui, retries recebem 409, induzindo o cliente a criar duplicatas."
+    },
+    {
+      "title": "FSM não-enforceada no banco: webhook sobrescreve estado terminal sem verificação",
+      "severity": "CRITICAL",
+      "scenario": "Webhook tardio processa Pix para cobrança já cancelada (REMOVIDA_PELO_USUARIO)",
+      "root_cause": "service/webhook_service.go:117 — cobRepo.UpdateStatus(ctx, tx, pix.TxID, 'CONCLUIDA') chamado sem verificar CanTransitionTo(). cob_repo.go:93 — UPDATE cobrancas SET status = $2 WHERE txid = $1 sem WHERE revisao = $3, sem CHECK constraint no banco para transições inválidas.",
+      "financial_impact": "Uma cobrança cancelada pelo recebedor pode ser 'ressuscitada' para CONCLUIDA por um webhook tardio do PSP. O recebedor cancelou a cobrança (não quer receber), mas o pagamento é processado mesmo assim.",
+      "reproduction_steps": [
+        "1. Criar cobrança (txid-001, status ATIVA)",
+        "2. PATCH /cob/txid-001 → status REMOVIDA_PELO_USUARIO (cancelada)",
+        "3. Webhook tardio chega para txid-001 (pagador pagou antes do cancelamento ser processado pelo PSP)",
+        "4. HandleCallback → UpdateStatus(txid-001, CONCLUIDA) — aceito pelo banco sem verificação",
+        "5. Cobrança cancelada agora está CONCLUIDA"
+      ],
+      "why_critical": "Violação da máquina de estados financeira. Um estado terminal (REMOVIDA_PELO_USUARIO) é sobrescrito para um estado ativo (CONCLUIDA) sem qualquer bloqueio. Isso corrompe a integridade do ciclo de vida da cobrança."
+    },
+    {
+      "title": "PSP chamado fora da transação: risco de estado órfão no PSP",
+      "severity": "CRITICAL",
+      "scenario": "CreateCob chama PSP antes de iniciar transação local; crash entre PSP e persistência local",
+      "root_cause": "service/cob_service.go:54-65 — PSP.CreateCob() chamado na linha 54. Transação local Begin() na linha 65. Se o sistema crasha entre as linhas 54 e 65, o PSP tem a cobrança mas o banco local não.",
+      "financial_impact": "Divergência entre PSP e sistema local. O PSP processará pagamentos para uma cobrança que o sistema local desconhece. Webhooks do PSP para esse txid não encontrarão a cobrança local (fk_pix_txid → cobrancas.txid).",
+      "reproduction_steps": [
+        "1. POST /cob/txid-001 → PSP.CreateCob() retorna sucesso",
+        "2. Sistema crasha antes de Begin() ou durante a transação (antes do Commit)",
+        "3. Reinicia — banco local não tem txid-001",
+        "4. PSP tem txid-001 ativa",
+        "5. Pagador paga via PSP → webhook chega → HandleCallback → UpdateStatus(txid-001) → falha (não encontrado)",
+        "6. Pix é persistido mas fk_pix_txid falha — a constraint FOREIGN KEY (txid) REFERENCES cobrancas(txid) rejeita a inserção do Pix"
+      ],
+      "why_critical": "Orfandade de estado entre PSP e sistema local. A constraint de chave estrangeira em pix_recebidos.txid impede a persistência do Pix, resultando em pagamento recebido no PSP mas não registrado localmente — perda financeira."
+    }
+  ],
+  "major_issues": [
+    {
+      "title": "TOCTOU no PatchCob: verificação FSM fora da transação",
+      "description": "service/cob_service.go:149-159 — GetByTxID busca estado atual FORA da transação. CanTransitionTo verificado com estado stale. Entre a verificação e o Begin(), outra thread pode alterar o status. O UPDATE dentro da transação não re-verifica.",
+      "impact": "Duas threads podem ambas passar na validação FSM e executar transições conflitantes. Ex: ambas tentam cancelar a mesma cobrança.",
+      "likelihood": "LOW"
+    },
+    {
+      "title": "ConfigureWebhook: rollback não-transacional em caso de falha PSP",
+      "description": "service/webhook_service.go:54-63 — Primeiro salva no banco local, depois chama PSP. Se PSP falhar, chama Delete local. Entre Save e Delete, outro request pode ler estado inconsistente. Se Delete também falhar, webhook fica salvo localmente mas não configurado no PSP.",
+      "impact": "Inconsistência entre estado local e PSP. Webhooks configurados localmente que não existem no PSP nunca receberão callbacks.",
+      "likelihood": "MEDIUM"
+    },
+    {
+      "title": "CreateCob: verificação de txid existente fora da transação",
+      "description": "service/cob_service.go:38-44 — GetByTxID verifica existência antes do Begin(). Duas threads concorrentes podem ambas passar no check e ambas chamar PSP. O segundo INSERT falha na constraint UNIQUE do banco, mas o PSP foi chamado duas vezes.",
+      "impact": "Desperdício de chamada ao PSP. O banco protege contra duplicação via UNIQUE constraint, então não há risco financeiro direto, mas o PSP pode cobrar por chamadas duplicadas.",
+      "likelihood": "LOW"
+    },
+    {
+      "title": "Reconciliação acessa PSP sem controle de rate limit",
+      "description": "worker/reconciliation_worker.go:84-116 — Para cada Pix local, dispara goroutine chamando PSP.GetPix. Sem limite de concorrência (sem semáforo/worker pool). 1000+ Pix locais = 1000+ chamadas simultâneas ao PSP.",
+      "impact": "Sobrecarga no PSP durante reconciliação. Possível rate limit/banimento pelo PSP. Em ambiente de produção com milhares de transações, a reconciliação diária pode derrubar a conexão com o PSP.",
+      "likelihood": "HIGH"
+    }
+  ],
+  "minor_issues": [
+    {
+      "title": "Sentinel errors mutáveis (domain/errors.go:32-74)",
+      "description": "Erros exportados como variáveis *ProblemDetail. Qualquer caller pode modificar campos (ex: ErrCobrancaNaoEncontrada.Detail = 'hacked'), corrompendo o erro para todo o sistema."
+    },
+    {
+      "title": "Validate() com side-effect (domain/cob.go:85-87)",
+      "description": "Validate() modifica Calendar.Expiracao para 86400 se <= 0. Método de validação não deveria ter efeitos colaterais — viola princípio de menor surpresa."
+    },
+    {
+      "title": "MarshalJSON identidade (domain/cob.go:120-127)",
+      "description": "MarshalJSON customizado que faz alias e remarshal sem transformação real. Código morto — complexidade desnecessária."
+    },
+    {
+      "title": "WriteJSON descarta erro de encode (domain/errors.go:28-32)",
+      "description": "json.NewEncoder(w).Encode(p) retorna erro que é ignorado. Se encode falhar após headers já escritos, cliente recebe resposta truncada."
+    }
+  ],
+  "confidence": {
+    "evidence_quality": "HIGH",
+    "reproducibility": "HIGH",
+    "coverage_of_chaos_scenarios": "HIGH"
+  },
+  "final_verdict": {
+    "status": "UNSAFE",
+    "resilience_score": 35,
+    "conclusion": "Sistema NÃO está seguro para produção financeira. 3 falhas CRÍTICAS encontradas: (1) Idempotência não-atômica — Complete() separado da transação de negócio, causando estado 'in_progress' permanente e induzindo duplicação. (2) FSM não-enforceada no banco — webhook pode sobrescrever estado terminal sem verificação, 'ressuscitando' cobranças canceladas. (3) PSP chamado fora da transação — risco de estado órfão no PSP, que combinado com a constraint FK em pix_recebidos.txid causa perda de pagamentos recebidos. Adicionalmente, 4 issues MAJOR e 4 issues MINOR comprometem a robustez. O sistema possui boa arquitetura (outbox transacional, dedup de webhook, isolamento PSP), mas as falhas de atomicidade e optimistic locking o tornam inseguro para valores financeiros reais."
+  }
+}

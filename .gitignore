@@ -1,0 +1,27 @@
+# Binaries
+/swiftpay-api
+/pix-api
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Environment
+.env
+.env.local
+
+# Dependencies
+vendor/
+
+# Test
+coverage.out
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+/tmp/
+/dist/
