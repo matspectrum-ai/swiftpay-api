@@ -23,7 +23,7 @@ func NewServer(port string, router chi.Router) *Server {
 		router: router,
 		srv: &http.Server{
 			Addr:         fmt.Sprintf(":%s", port),
-			Handler:      router,
+			Handler:      http.TimeoutHandler(router, 10*time.Second, `{"error":"request timeout"}`),
 			ReadTimeout:  5 * time.Second,
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  120 * time.Second,

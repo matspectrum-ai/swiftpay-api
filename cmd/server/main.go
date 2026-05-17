@@ -128,7 +128,7 @@ func main() {
 	workerWg.Add(1)
 	go func() {
 		defer workerWg.Done()
-		cleanupWorker := worker.NewCleanupWorker(outboxReader, idempotencyRepo, 1*time.Hour, 7)
+		cleanupWorker := worker.NewCleanupWorker(pool, outboxReader, idempotencyRepo, 1*time.Hour, 7)
 		if err := cleanupWorker.Start(workerCtx); err != nil && err != context.Canceled {
 			slog.ErrorContext(ctx, "cleanup worker parou com erro", "error", err)
 		}
