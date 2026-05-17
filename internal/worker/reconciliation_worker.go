@@ -39,16 +39,20 @@ func (w *ReconciliationWorker) Start(ctx context.Context, schedule string) error
 	w.cron = cron.New(cron.WithLocation(time.UTC))
 
 	_, err := w.cron.AddFunc(schedule, func() {
-		acquired, err := w.leaderElection.TryAcquire(ctx)
+		epoch, err := w.leaderElection.TryAcquire(ctx)
 		if err != nil {
 			slog.ErrorContext(ctx, "erro tentando adquirir liderança", "error", err)
 			return
 		}
-		if !acquired {
+		if epoch == nil {
 			slog.DebugContext(ctx, "outra instância é líder, pulando reconciliação")
 			return
 		}
-		defer w.leaderElection.Release(ctx)
+		defer func() {
+			if relErr := w.leaderElection.Release(ctx); relErr != nil {
+				slog.ErrorContext(ctx, "erro liberando liderança", "error", relErr)
+			}
+		}()
 
 		if err := w.run(ctx); err != nil {
 			slog.ErrorContext(ctx, "erro na reconciliação", "error", err)
@@ -168,6 +172,23 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 		}
 	} else {
 		slog.InfoContext(ctx, "reconciliação concluída sem discrepâncias", "pix_verificados", totalChecked)
+	}
+
+	_, snapErr := w.db.Exec(ctx,
+		`INSERT INTO settlement_snapshots (snapshot_date, total_pix_received, total_amount_cents, total_discrepancies, reconciliation_completed, snapshot_data)
+		 VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+		 ON CONFLICT (snapshot_date) DO UPDATE SET
+		   total_pix_received = $2, total_amount_cents = $3, total_discrepancies = $4,
+		   reconciliation_completed = $5, snapshot_data = $6::jsonb, created_at = NOW()`,
+		fim.Truncate(24*time.Hour),
+		totalChecked,
+		0,
+		len(discrepancies),
+		len(discrepancies) == 0,
+		"{}",
+	)
+	if snapErr != nil {
+		slog.ErrorContext(ctx, "erro salvando snapshot de reconciliação", "error", snapErr)
 	}
 
 	return nil

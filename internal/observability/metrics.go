@@ -47,4 +47,29 @@ var (
 		Name: "swiftpay_worker_errors_total",
 		Help: "Worker errors by worker type",
 	}, []string{"worker"})
+
+	OutboxQueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "swiftpay_outbox_queue_depth",
+		Help: "Pending outbox messages awaiting processing",
+	})
+
+	RetryBudgetUsed = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "swiftpay_retry_budget_used",
+		Help: "Retries in current budget window",
+	})
+
+	LeaderEpoch = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "swiftpay_leader_epoch",
+		Help: "Current leader epoch number",
+	}, []string{"instance_id"})
+
+	LockContention = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "swiftpay_lock_contention_total",
+		Help: "Advisory lock contention events",
+	})
+
+	ReconciliationDrift = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "swiftpay_reconciliation_drift_seconds",
+		Help: "Seconds since last successful reconciliation",
+	})
 )

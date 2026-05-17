@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/matspectrum/swiftpay-api/internal/config"
@@ -110,7 +112,11 @@ func main() {
 	outboxPublisher.RegisterHandler("DevolucaoSolicitada", worker.DevolucaoSolicitadaHandler)
 	outboxPublisher.RegisterHandler("WebhookConfigurado", worker.WebhookConfiguradoHandler)
 
-	leaderElection := worker.NewLeaderElection(pool)
+	instanceID := os.Getenv("INSTANCE_ID")
+	if instanceID == "" {
+		instanceID = fmt.Sprintf("swiftpay-%s", uuid.New().String()[:8])
+	}
+	leaderElection := worker.NewLeaderElection(pool, instanceID)
 
 	workerCtx, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
