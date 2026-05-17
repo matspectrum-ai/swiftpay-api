@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -114,16 +115,22 @@ func main() {
 	workerCtx, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
 
+	var workerWg sync.WaitGroup
+
+	workerWg.Add(1)
 	go func() {
-		if err := outboxPublisher.Start(workerCtx); err != nil {
-			slog.ErrorContext(ctx, "outbox publisher parou", "error", err)
+		defer workerWg.Done()
+		if err := outboxPublisher.Start(workerCtx); err != nil && err != context.Canceled {
+			slog.ErrorContext(ctx, "outbox publisher parou com erro", "error", err)
 		}
 	}()
 
-	cleanupWorker := worker.NewCleanupWorker(outboxReader, idempotencyRepo, 1*time.Hour, 7)
+	workerWg.Add(1)
 	go func() {
-		if err := cleanupWorker.Start(workerCtx); err != nil {
-			slog.ErrorContext(ctx, "cleanup worker parou", "error", err)
+		defer workerWg.Done()
+		cleanupWorker := worker.NewCleanupWorker(outboxReader, idempotencyRepo, 1*time.Hour, 7)
+		if err := cleanupWorker.Start(workerCtx); err != nil && err != context.Canceled {
+			slog.ErrorContext(ctx, "cleanup worker parou com erro", "error", err)
 		}
 	}()
 
@@ -136,6 +143,25 @@ func main() {
 	if err := server.Start(ctx); err != nil {
 		slog.ErrorContext(ctx, "erro no servidor", "error", err)
 		os.Exit(1)
+	}
+
+	slog.InfoContext(ctx, "iniciando shutdown de workers")
+	cancelWorkers()
+
+	done := make(chan struct{})
+	go func() {
+		workerWg.Wait()
+		close(done)
+	}()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer shutdownCancel()
+
+	select {
+	case <-done:
+		slog.InfoContext(ctx, "todos os workers pararam gracefulmente")
+	case <-shutdownCtx.Done():
+		slog.ErrorContext(ctx, "shutdown forçado por timeout — workers não finalizaram a tempo")
 	}
 }
 

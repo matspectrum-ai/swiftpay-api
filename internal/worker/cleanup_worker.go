@@ -44,17 +44,33 @@ func (w *CleanupWorker) Start(ctx context.Context) error {
 	}
 }
 
+const pruneBatchSize = 2000
+
 func (w *CleanupWorker) prune(ctx context.Context) {
-	if deleted, err := w.outboxReader.PruneOldMessages(ctx, w.retentionDays); err != nil {
-		slog.ErrorContext(ctx, "erro removendo mensagens outbox antigas", "error", err)
-	} else if deleted > 0 {
-		slog.InfoContext(ctx, "mensagens outbox antigas removidas", "count", deleted)
+	for {
+		deleted, err := w.outboxReader.PruneOldMessagesBatch(ctx, w.retentionDays, pruneBatchSize)
+		if err != nil {
+			slog.ErrorContext(ctx, "erro removendo mensagens outbox antigas", "error", err)
+			break
+		}
+		if deleted == 0 {
+			break
+		}
+		slog.InfoContext(ctx, "lote de mensagens outbox removidas", "count", deleted)
+		time.Sleep(1 * time.Second)
 	}
 
-	if deleted, err := w.outboxReader.PruneOldDeadLetters(ctx, w.retentionDays); err != nil {
-		slog.ErrorContext(ctx, "erro removendo deadletters antigas", "error", err)
-	} else if deleted > 0 {
-		slog.InfoContext(ctx, "deadletters antigas removidas", "count", deleted)
+	for {
+		deleted, err := w.outboxReader.PruneOldDeadLettersBatch(ctx, w.retentionDays, pruneBatchSize)
+		if err != nil {
+			slog.ErrorContext(ctx, "erro removendo deadletters antigas", "error", err)
+			break
+		}
+		if deleted == 0 {
+			break
+		}
+		slog.InfoContext(ctx, "lote de deadletters removidas", "count", deleted)
+		time.Sleep(1 * time.Second)
 	}
 
 	if deleted, err := w.idempotencyRepo.CleanupExpired(ctx); err != nil {

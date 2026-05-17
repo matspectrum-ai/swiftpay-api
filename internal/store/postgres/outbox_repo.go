@@ -292,26 +292,37 @@ func (r *OutboxReader) MoveToDeadLetter(ctx context.Context, msg OutboxMessage) 
 	return nil
 }
 
-// PruneOldMessages remove mensagens do outbox publicadas há mais de 'retention' dias.
-func (r *OutboxReader) PruneOldMessages(ctx context.Context, retentionDays int) (int64, error) {
+// PruneOldMessagesBatch remove mensagens antigas em lotes. Retorna linhas afetadas.
+// Use em loop até retornar 0.
+func (r *OutboxReader) PruneOldMessagesBatch(ctx context.Context, retentionDays, batchSize int) (int64, error) {
 	tag, err := r.db.Exec(ctx,
-		`DELETE FROM outbox_messages WHERE published_at IS NOT NULL AND published_at < NOW() - ($1 || ' days')::INTERVAL`,
-		strconv.Itoa(retentionDays),
+		`DELETE FROM outbox_messages
+		 WHERE id IN (
+			 SELECT id FROM outbox_messages
+			 WHERE published_at IS NOT NULL AND published_at < NOW() - ($1 || ' days')::INTERVAL
+			 LIMIT $2
+		 )`,
+		strconv.Itoa(retentionDays), batchSize,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("removendo mensagens antigas: %w", err)
+		return 0, fmt.Errorf("removendo mensagens antigas (batch): %w", err)
 	}
 	return tag.RowsAffected(), nil
 }
 
-// PruneOldDeadLetters remove registros de deadletter antigos.
-func (r *OutboxReader) PruneOldDeadLetters(ctx context.Context, retentionDays int) (int64, error) {
+// PruneOldDeadLettersBatch remove deadletters antigos em lotes.
+func (r *OutboxReader) PruneOldDeadLettersBatch(ctx context.Context, retentionDays, batchSize int) (int64, error) {
 	tag, err := r.db.Exec(ctx,
-		`DELETE FROM outbox_dead_letter WHERE moved_at < NOW() - ($1 || ' days')::INTERVAL`,
-		strconv.Itoa(retentionDays),
+		`DELETE FROM outbox_dead_letter
+		 WHERE id IN (
+			 SELECT id FROM outbox_dead_letter
+			 WHERE moved_at < NOW() - ($1 || ' days')::INTERVAL
+			 LIMIT $2
+		 )`,
+		strconv.Itoa(retentionDays), batchSize,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("removendo deadletters antigos: %w", err)
+		return 0, fmt.Errorf("removendo deadletters antigos (batch): %w", err)
 	}
 	return tag.RowsAffected(), nil
 }

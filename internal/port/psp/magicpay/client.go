@@ -19,7 +19,7 @@ func NewClient(baseURL, apiToken string) *Client {
 	return &Client{
 		baseURL:    baseURL,
 		apiToken:   apiToken,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
