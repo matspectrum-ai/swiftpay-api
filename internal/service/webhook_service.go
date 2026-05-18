@@ -86,12 +86,15 @@ func (s *WebhookService) ListWebhooks(ctx context.Context) ([]domain.WebhookConf
 }
 
 func (s *WebhookService) DeleteWebhook(ctx context.Context, chave string) error {
-	if err := s.pspClient.DeleteWebhook(ctx, chave); err != nil {
-		return fmt.Errorf("psp deletar webhook: %w", err)
-	}
-
 	if err := s.webhookRepo.Delete(ctx, chave); err != nil {
 		return fmt.Errorf("deletando webhook local: %w", err)
+	}
+
+	if err := s.pspClient.DeleteWebhook(ctx, chave); err != nil {
+		slog.ErrorContext(ctx, "CRÍTICO: webhook removido localmente mas falha ao remover no PSP",
+			"chave", chave,
+			"error", err,
+		)
 	}
 
 	slog.InfoContext(ctx, "webhook removido", "chave", chave)
@@ -138,6 +141,12 @@ func (s *WebhookService) HandleCallback(ctx context.Context, payload []byte) err
 				"txid", pix.TxID,
 				"status_atual", existingCob.Status,
 				"status_desejado", domain.CobStatusConcluida,
+			)
+		} else if pix.ValorCentavos < existingCob.Valor.Original {
+			slog.WarnContext(ctx, "pix com valor inferior à cobrança — conclusão recusada no webhook",
+				"txid", pix.TxID,
+				"valor_pix", int64(pix.ValorCentavos),
+				"valor_cobranca", int64(existingCob.Valor.Original),
 			)
 		} else {
 			previousCob = existingCob

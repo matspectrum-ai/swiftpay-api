@@ -133,7 +133,10 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 
 				hasDiscrepancy := false
 				var pspValor domain.ValorCentavos
-				pspValor.UnmarshalJSON([]byte(`"` + pspPix.Valor + `"`))
+				if err := pspValor.UnmarshalJSON([]byte(`"` + pspPix.Valor + `"`)); err != nil {
+					slog.WarnContext(ctx, "erro convertendo valor PSP", "e2eid", local.E2EID, "psp_valor", pspPix.Valor, "error", err)
+					return
+				}
 
 				rec := reconciliationRecord{
 					E2EID:      local.E2EID,
