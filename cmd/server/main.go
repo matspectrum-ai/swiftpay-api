@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/matspectrum/swiftpay-api/internal/config"
+	"github.com/matspectrum/swiftpay-api/internal/domain"
 	"github.com/matspectrum/swiftpay-api/internal/port/psp"
 	"github.com/matspectrum/swiftpay-api/internal/port/psp/magicpay"
 	"github.com/matspectrum/swiftpay-api/internal/port/psp/mock"
@@ -88,7 +90,7 @@ func main() {
 	cobService := service.NewCobService(pool, cobRepo, pspClient, outboxWriter, idempotencyRepo, ledgerRepo)
 	webhookService := service.NewWebhookService(pool, webhookRepo, pixRepo, cobRepo, pixService, pspClient, outboxWriter, ledgerRepo)
 
-	healthHandler := handler.NewHealthHandler(pool)
+	healthHandler := handler.NewHealthHandler(pool, pspClient)
 	cobHandler := handler.NewCobHandler(cobService)
 	pixHandler := handler.NewPixHandler(pixService)
 	webhookHandler := handler.NewWebhookHandler(webhookService)
@@ -109,8 +111,27 @@ func main() {
 	outboxPublisher.RegisterHandler("CobrancaCriada", worker.CobrancaCriadaHandler)
 	outboxPublisher.RegisterHandler("CobrancaAtualizada", worker.CobrancaAtualizadaHandler)
 	outboxPublisher.RegisterHandler("PixRecebido", worker.PixRecebidoHandler)
-	outboxPublisher.RegisterHandler("DevolucaoSolicitada", worker.DevolucaoSolicitadaHandler)
-	outboxPublisher.RegisterHandler("WebhookConfigurado", worker.WebhookConfiguradoHandler)
+	outboxPublisher.RegisterHandler("DevolucaoSolicitada", func(ctx context.Context, msg postgres.OutboxMessage) error {
+		var dev domain.Devolucao
+		if err := json.Unmarshal(msg.Payload, &dev); err != nil {
+			return fmt.Errorf("deserializando devolução: %w", err)
+		}
+		_, err := pspClient.CreateDevolucao(ctx, dev.EndToEndID, dev.ID, fmt.Sprintf("%.2f", float64(dev.Valor)/100.0))
+		if err != nil {
+			return fmt.Errorf("psp devolução: %w", err)
+		}
+		return nil
+	})
+	outboxPublisher.RegisterHandler("WebhookConfigurado", func(ctx context.Context, msg postgres.OutboxMessage) error {
+		var wc domain.WebhookConfig
+		if err := json.Unmarshal(msg.Payload, &wc); err != nil {
+			return fmt.Errorf("deserializando webhook: %w", err)
+		}
+		if err := pspClient.ConfigureWebhook(ctx, wc.Chave, wc.WebhookURL); err != nil {
+			return fmt.Errorf("psp configure webhook: %w", err)
+		}
+		return nil
+	})
 
 	instanceID := os.Getenv("INSTANCE_ID")
 	if instanceID == "" {

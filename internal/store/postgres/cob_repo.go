@@ -40,8 +40,8 @@ func (r *CobRepo) Create(ctx context.Context, tx pgx.Tx, cob *domain.Cobranca) e
 	return nil
 }
 
-// Update atualiza uma cobrança existente.
-func (r *CobRepo) Update(ctx context.Context, tx pgx.Tx, cob *domain.Cobranca) error {
+// Update atualiza uma cobrança existente com optimistic locking.
+func (r *CobRepo) Update(ctx context.Context, tx pgx.Tx, cob *domain.Cobranca, expectedRevisao int) error {
 	tag, err := tx.Exec(ctx,
 		`UPDATE cobrancas SET
 		 chave_pix = $2, valor_original = $3, status = $4,
@@ -49,17 +49,18 @@ func (r *CobRepo) Update(ctx context.Context, tx pgx.Tx, cob *domain.Cobranca) e
 		 devedor_cnpj = $8, solicitacao_pagador = $9,
 		 location_url = $10, pix_copia_e_cola = $11, revisao = $12,
 		 updated_at = NOW()
-		 WHERE txid = $1`,
+		 WHERE txid = $1 AND revisao = $13`,
 		cob.TxID, cob.Chave, int64(cob.Valor.Original), cob.Status,
 		cob.Calendar.Criacao.Add(time.Duration(cob.Calendar.Expiracao)*time.Second),
 		cob.Devedor.Nome, cob.Devedor.CPF, cob.Devedor.CNPJ,
 		cob.SolicitacaoPagador, cob.Location, cob.PixCopiaECola, cob.Revisao,
+		expectedRevisao,
 	)
 	if err != nil {
 		return fmt.Errorf("atualizando cobrança txid=%s: %w", cob.TxID, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return domain.ErrCobrancaNaoEncontrada
+		return fmt.Errorf("conflito de versão ou cobrança não encontrada txid=%s", cob.TxID)
 	}
 	return nil
 }

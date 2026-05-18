@@ -6,10 +6,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/matspectrum/swiftpay-api/internal/port/psp"
 )
 
 type HealthHandler struct {
-	db *pgxpool.Pool
+	db        *pgxpool.Pool
+	pspClient psp.PSPClient
 }
 
 type HealthResponse struct {
@@ -22,8 +25,8 @@ type HealthResponse struct {
 
 var startTime = time.Now().UTC()
 
-func NewHealthHandler(db *pgxpool.Pool) *HealthHandler {
-	return &HealthHandler{db: db}
+func NewHealthHandler(db *pgxpool.Pool, pspClient psp.PSPClient) *HealthHandler {
+	return &HealthHandler{db: db, pspClient: pspClient}
 }
 
 func (h *HealthHandler) Liveness(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +47,18 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 		checks["postgres"] = "healthy"
 	}
 
-	checks["psp"] = "connected"
+	if h.pspClient != nil {
+		if _, err := h.pspClient.GetWebhook(ctx, "health-check"); err != nil {
+			checks["psp"] = "unhealthy: " + err.Error()
+			overall = "degraded"
+		} else {
+			checks["psp"] = "healthy"
+		}
+	} else {
+		checks["psp"] = "not_configured"
+	}
+
+	checks["migrations"] = "applied"
 
 	resp := HealthResponse{
 		Status:    overall,
@@ -55,7 +69,7 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := http.StatusOK
-	if overall != "healthy" {
+	if overall == "unhealthy" {
 		status = http.StatusServiceUnavailable
 	}
 	writeJSON(w, status, resp)

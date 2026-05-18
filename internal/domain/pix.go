@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -52,9 +53,15 @@ type WebhookPayload struct {
 }
 
 // ToPixRecebido converte webhook payload para PixRecebido.
-func (p *WebhookPayload) ToPixRecebido() *PixRecebido {
+// Retorna erro se o valor for inválido (ex: malformado, negativo, zero).
+func (p *WebhookPayload) ToPixRecebido() (*PixRecebido, error) {
 	var v ValorCentavos
-	v.UnmarshalJSON([]byte(`"` + p.Valor + `"`))
+	if err := v.UnmarshalJSON([]byte(`"` + p.Valor + `"`)); err != nil {
+		return nil, fmt.Errorf("valor inválido no payload webhook: %s — %w", p.Valor, err)
+	}
+	if v <= 0 {
+		return nil, fmt.Errorf("valor do pix deve ser positivo: %s", p.Valor)
+	}
 	return &PixRecebido{
 		EndToEndID:             p.EndToEndID,
 		TxID:              p.TxID,
@@ -65,7 +72,7 @@ func (p *WebhookPayload) ToPixRecebido() *PixRecebido {
 		PagadorCPF:        p.PagadorCPF,
 		PagadorCNPJ:       p.PagadorCNPJ,
 		InfoPagador:       p.InfoPagador,
-	}
+	}, nil
 }
 
 // WebhookConfig representa configuração de webhook.

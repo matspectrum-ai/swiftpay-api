@@ -264,12 +264,19 @@ func (r *OutboxReader) NackFailed(ctx context.Context, id, workerID, lastErr str
 }
 
 // MoveToDeadLetter move mensagem para deadletter e marca original como publicada.
-func (r *OutboxReader) MoveToDeadLetter(ctx context.Context, msg OutboxMessage) error {
+func (r *OutboxReader) MoveToDeadLetter(ctx context.Context, msg OutboxMessage, workerID string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx deadletter: %w", err)
 	}
 	defer tx.Rollback(ctx)
+
+	var claimedBy string
+	err = tx.QueryRow(ctx, `SELECT claimed_by FROM outbox_messages WHERE id = $1`, msg.ID).Scan(&claimedBy)
+	if err != nil || claimedBy != workerID {
+		tx.Rollback(ctx)
+		return fmt.Errorf("cannot move message %s: not claimed by this worker", msg.ID)
+	}
 
 	_, err = tx.Exec(ctx,
 		`INSERT INTO outbox_dead_letter (original_id, aggregate_type, aggregate_id, event_type, payload, attempts, last_error, moved_at)

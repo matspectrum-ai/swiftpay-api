@@ -131,7 +131,7 @@ func (s *CobService) CreateCob(ctx context.Context, cob *domain.Cobranca) (*doma
 	}
 	defer updateTx.Rollback(ctx)
 
-	if err := s.cobRepo.Update(ctx, updateTx, cob); err != nil {
+	if err := s.cobRepo.Update(ctx, updateTx, cob, 0); err != nil {
 		slog.WarnContext(ctx, "falha ao atualizar dados PSP", "error", err)
 		return cob, true, nil
 	}
@@ -189,7 +189,7 @@ func (s *CobService) UpdateCob(ctx context.Context, txid string, cob *domain.Cob
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.cobRepo.Update(ctx, tx, cob); err != nil {
+	if err := s.cobRepo.Update(ctx, tx, cob, existing.Revisao); err != nil {
 		return nil, fmt.Errorf("atualizando cobrança: %w", err)
 	}
 

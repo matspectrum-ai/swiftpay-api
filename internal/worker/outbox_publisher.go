@@ -120,7 +120,7 @@ func (p *OutboxPublisher) processBatch(ctx context.Context) error {
 
 			if msg.Attempts+1 >= msg.MaxAttempts {
 				observability.WorkerErrors.WithLabelValues("outbox_deadletter").Inc()
-				if moveErr := p.reader.MoveToDeadLetter(ctx, msg); moveErr != nil {
+				if moveErr := p.reader.MoveToDeadLetter(ctx, msg, msg.ClaimedBy); moveErr != nil {
 					slog.ErrorContext(ctx, "erro movendo para deadletter", "id", msg.ID, "error", moveErr)
 				}
 			} else {

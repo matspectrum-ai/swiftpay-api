@@ -54,7 +54,24 @@ func (w *ReconciliationWorker) Start(ctx context.Context, schedule string) error
 			}
 		}()
 
-		if err := w.run(ctx); err != nil {
+		heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+		defer cancelHeartbeat()
+		go func() {
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-heartbeatCtx.Done():
+					return
+				case <-ticker.C:
+					if err := w.leaderElection.RenewHeartbeat(heartbeatCtx); err != nil {
+						slog.ErrorContext(heartbeatCtx, "falha ao renovar heartbeat de liderança", "error", err)
+					}
+				}
+			}
+		}()
+
+		if err := w.run(heartbeatCtx); err != nil {
 			slog.ErrorContext(ctx, "erro na reconciliação", "error", err)
 		}
 	})
@@ -93,6 +110,7 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 		wg            sync.WaitGroup
 		sem           = make(chan struct{}, w.maxPSPConcurrency)
 		totalChecked  int
+		totalAmountCents int64
 	)
 
 	for offset := 0; ; offset += pageSize {
@@ -118,6 +136,10 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 			go func(local domain.PixRecebido) {
 				defer wg.Done()
 				defer func() { <-sem }()
+
+				mu.Lock()
+				totalAmountCents += int64(local.ValorCentavos)
+				mu.Unlock()
 
 				pspPix, err := w.pspClient.GetPix(ctx, local.EndToEndID)
 				if err != nil {
@@ -185,7 +207,7 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 		   reconciliation_completed = $5, snapshot_data = $6::jsonb, created_at = NOW()`,
 		fim.Truncate(24*time.Hour),
 		totalChecked,
-		0,
+		totalAmountCents,
 		len(discrepancies),
 		len(discrepancies) == 0,
 		"{}",

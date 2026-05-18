@@ -126,7 +126,10 @@ func (s *WebhookService) HandleCallback(ctx context.Context, payload []byte) err
 		return nil
 	}
 
-	pix := wp.ToPixRecebido()
+	pix, err := wp.ToPixRecebido()
+	if err != nil {
+		return fmt.Errorf("payload webhook inválido: %w", err)
+	}
 	if err := s.pixRepo.Create(ctx, tx, pix); err != nil {
 		return fmt.Errorf("persistindo pix: %w", err)
 	}

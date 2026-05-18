@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -100,15 +99,12 @@ func (h *WebhookHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	go func() {
-		ctx := context.WithoutCancel(r.Context())
-		if err := h.webhookService.HandleCallback(ctx, bodyBytes); err != nil {
-			observability.WebhookProcessed.WithLabelValues("error").Inc()
-			slog.ErrorContext(ctx, "erro ao processar callback webhook assincrono", "error", err, "e2eid", payload.EndToEndID)
-		} else {
-			observability.WebhookProcessed.WithLabelValues("success").Inc()
-		}
-	}()
+	if err := h.webhookService.HandleCallback(r.Context(), bodyBytes); err != nil {
+		observability.WebhookProcessed.WithLabelValues("error").Inc()
+		slog.ErrorContext(r.Context(), "erro ao processar callback webhook", "error", err, "e2eid", payload.EndToEndID)
+	} else {
+		observability.WebhookProcessed.WithLabelValues("success").Inc()
+	}
 
 	observability.WebhookProcessed.WithLabelValues("received").Inc()
 
