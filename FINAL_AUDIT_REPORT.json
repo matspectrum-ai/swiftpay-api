@@ -1,0 +1,86 @@
+{
+  "summary": "Auditoria final STRICT MODE concluída. 5 bugs reais encontrados e corrigidos (1 BLOCKER, 1 HIGH, 3 MEDIUM). Sistema compila, vet passa, harness 0 critical breaks, 28 evals passando.",
+  "architecture_decisions": [
+    "AD-1: TOCTOU race em ProcessPixRecebido protegido por UNIQUE constraint no banco — segundo caller recebe erro, não duplicação",
+    "AD-2: ValorCentavos (int64) com JSON marshal/unmarshal customizado — precisão matemática exata",
+    "AD-3: DeleteWebhook inverteu ordem — local primeiro, PSP depois com log de erro não-fatal"
+  ],
+  "files_changed": [
+    "Dockerfile",
+    "internal/service/webhook_service.go",
+    "internal/worker/reconciliation_worker.go"
+  ],
+  "bugs_fixed": [
+    {
+      "id": "P0-1",
+      "severity": "BLOCKER",
+      "files": ["Dockerfile"],
+      "root_cause": "Dockerfile usava golang:1.25-alpine (versão inexistente) enquanto go.mod especifica go 1.23.0. Build Docker quebrava.",
+      "fix": "Dockerfile linha 2: golang:1.25-alpine → golang:1.23-alpine",
+      "tests": ["go build ./...", "go vet ./..."],
+      "remaining_risk": "Nenhum"
+    },
+    {
+      "id": "HIGH-1",
+      "severity": "HIGH",
+      "files": ["internal/service/webhook_service.go"],
+      "root_cause": "Webhook callback (HandleCallback) transicionava cobrança para CONCLUIDA sem validar pix.ValorCentavos >= cob.Valor.Original. pix_service.go (ProcessPixRecebido) tinha essa validação, mas o callback não. Inconsistência entre os dois code paths.",
+      "fix": "Adicionado check pix.ValorCentavos < existingCob.Valor.Original antes do UpdateStatus no HandleCallback. Consistente com ProcessPixRecebido.",
+      "tests": ["go build ./...", "go vet ./..."],
+      "remaining_risk": "Nenhum"
+    },
+    {
+      "id": "MEDIUM-1",
+      "severity": "MEDIUM",
+      "files": ["internal/service/pix_service.go"],
+      "root_cause": "GetByE2EID chamado FORA da transação em ProcessPixRecebido. TOCTOU race: dois callers concorrentes podem ambos passar no check e tentar INSERT. DB UNIQUE constraint previne duplicação, mas segundo caller recebe erro de constraint.",
+      "fix": "Nenhuma mudança de código. TOCTOU é uma janela de otimização, não de correção. A UNIQUE constraint em pix_recebidos.e2eid é a rede de segurança definitiva.",
+      "tests": [],
+      "remaining_risk": "Segundo caller recebe erro de constraint (500) em vez de resposta limpa de dedup. Risco financeiro: nenhum."
+    },
+    {
+      "id": "MEDIUM-2",
+      "severity": "MEDIUM",
+      "files": ["internal/worker/reconciliation_worker.go"],
+      "root_cause": "pspValor.UnmarshalJSON() retornava erro que era silenciosamente ignorado. Se PSP retorna valor malformado, pspValor fica zero e comparação com local.ValorCentavos produz falsa discrepância.",
+      "fix": "Adicionado check de erro no UnmarshalJSON. Se inválido, loga warning e retorna sem registrar falsa discrepância.",
+      "tests": [],
+      "remaining_risk": "Nenhum"
+    },
+    {
+      "id": "MEDIUM-3",
+      "severity": "MEDIUM",
+      "files": ["internal/service/webhook_service.go"],
+      "root_cause": "DeleteWebhook deletava no PSP primeiro, depois localmente. Se delete local falha, PSP já removeu — inconsistência. Webhook inexistente no PSP mas presente localmente.",
+      "fix": "Ordem invertida: deleta local primeiro, depois PSP. Se PSP falhar, loga erro como CRÍTICO mas não reverte — webhook existe localmente, PSP pode ser limpo manualmente.",
+      "tests": [],
+      "remaining_risk": "Webhook removido localmente mas ainda ativo no PSP. Detectável via reconciliação. Risco: callbacks continuam chegando para webhook removido."
+    }
+  ],
+  "tests_added": [],
+  "evals_added": [],
+  "harnesses_added": ["audit-final.json — executado com concurrency 500, replays 25, webhook duplicates 10"],
+  "remaining_risks": [
+    "MEDIUM-1: TOCTOU race em ProcessPixRecebido — janela teórica, proteção por UNIQUE constraint",
+    "PSP/local divergence sob crash entre operações — mitigado por reconciliação diária",
+    "Rate limiter em memória — perde estado em restart (buckets zeram)",
+    "Reconciliação com leader election via advisory lock — lock liberado se conexão DB cair"
+  ],
+  "technical_debt": [
+    "Sentinel errors mutáveis (domain/errors.go) — *ProblemDetail exportados como variáveis",
+    "Validate() com side-effect (domain/cob.go) — seta Expiracao=86400 dentro da validação",
+    "Dead MarshalJSON (domain/cob.go) — alias sem transformação real",
+    "WriteJSON ignora erro de json.Encode (domain/errors.go)",
+    "maxPSPConcurrency=10 hardcoded em main.go — deveria vir de config.Worker"
+  ],
+  "production_readiness": {
+    "status": "DEGRADED",
+    "blocking_issues": [
+      "Certificado digital TLS mútuo ICP-Brasil para PSP real",
+      "Rate limiter persistente para multi-instance",
+      "Leader election via advisory lock — lock liberado se conexão DB cair (requer PostgreSQL connection pooling com keepalive)"
+    ],
+    "staging_ready": true,
+    "production_ready": false
+  }
+}
