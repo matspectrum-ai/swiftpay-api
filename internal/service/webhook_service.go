@@ -113,7 +113,7 @@ func (s *WebhookService) HandleCallback(ctx context.Context, payload []byte) err
 	}
 	defer tx.Rollback(ctx)
 
-	inserted, err := s.webhookRepo.InsertEventTx(ctx, tx, wp.E2EID, wp.Chave, payload)
+	inserted, err := s.webhookRepo.InsertEventTx(ctx, tx, wp.EndToEndID, wp.Chave, payload)
 	if err != nil {
 		return fmt.Errorf("inserindo evento webhook: %w", err)
 	}
@@ -121,7 +121,7 @@ func (s *WebhookService) HandleCallback(ctx context.Context, payload []byte) err
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("commit transação (duplicado): %w", err)
 		}
-		slog.InfoContext(ctx, "evento webhook duplicado ignorado", "e2eid", wp.E2EID)
+		slog.InfoContext(ctx, "evento webhook duplicado ignorado", "e2eid", wp.EndToEndID)
 		observability.WebhookProcessed.WithLabelValues("duplicate").Inc()
 		return nil
 	}
@@ -158,7 +158,7 @@ func (s *WebhookService) HandleCallback(ctx context.Context, payload []byte) err
 		}
 	}
 
-	if err := s.outboxWriter.Write(ctx, tx, "pix", pix.E2EID, "PixRecebido", pix); err != nil {
+	if err := s.outboxWriter.Write(ctx, tx, "pix", pix.EndToEndID, "PixRecebido", pix); err != nil {
 		return fmt.Errorf("escrevendo outbox: %w", err)
 	}
 
@@ -175,7 +175,7 @@ func (s *WebhookService) HandleCallback(ctx context.Context, payload []byte) err
 			CorrelationID:   middleware.GetRequestID(ctx),
 			RequestID:       middleware.GetRequestID(ctx),
 			TxID:            pix.TxID,
-			E2EID:           pix.E2EID,
+			EndToEndID:           pix.EndToEndID,
 			PreviousState:   previousStateJSON,
 			NextState:       nextStateJSON,
 			OperationSource: "webhook_callback",
@@ -189,7 +189,7 @@ func (s *WebhookService) HandleCallback(ctx context.Context, payload []byte) err
 	}
 
 	slog.InfoContext(ctx, "pix recebido processado",
-		"e2eid", pix.E2EID,
+		"e2eid", pix.EndToEndID,
 		"valor", int64(pix.ValorCentavos),
 	)
 	return nil

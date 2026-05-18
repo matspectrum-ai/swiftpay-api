@@ -37,7 +37,7 @@ func TestWebhookCallbackAtomicity(t *testing.T) {
 	err = webhookService.HandleCallback(ctx, payload)
 	require.NoError(t, err)
 
-	pix, err := pixRepo.GetByE2EID(ctx, "E1234567890123456789012345678901")
+	pix, err := pixRepo.GetByEndToEndID(ctx, "E1234567890123456789012345678901")
 	require.NoError(t, err)
 	assert.NotNil(t, pix)
 	assert.Equal(t, domain.ValorCentavos(1000), pix.ValorCentavos)

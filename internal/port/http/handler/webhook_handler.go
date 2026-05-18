@@ -104,7 +104,7 @@ func (h *WebhookHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 		ctx := context.WithoutCancel(r.Context())
 		if err := h.webhookService.HandleCallback(ctx, bodyBytes); err != nil {
 			observability.WebhookProcessed.WithLabelValues("error").Inc()
-			slog.ErrorContext(ctx, "erro ao processar callback webhook assincrono", "error", err, "e2eid", payload.E2EID)
+			slog.ErrorContext(ctx, "erro ao processar callback webhook assincrono", "error", err, "e2eid", payload.EndToEndID)
 		} else {
 			observability.WebhookProcessed.WithLabelValues("success").Inc()
 		}

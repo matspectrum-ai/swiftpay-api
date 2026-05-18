@@ -56,7 +56,7 @@ func TestHandleCallback(t *testing.T) {
 	svc := service.NewWebhookService(pc.Pool, webhookRepo, pixRepo, cobRepo, pixService, pspClient, outboxWriter, nil)
 
 	payload := domain.WebhookPayload{
-		E2EID: "E90400888202305231WEBHOOK0012345",
+		EndToEndID: "E90400888202305231WEBHOOK0012345",
 		Chave: "matspectrum@gmail.com",
 		Valor: "150.00",
 	}
@@ -67,7 +67,7 @@ func TestHandleCallback(t *testing.T) {
 	err = svc.HandleCallback(ctx, payloadBytes)
 	require.NoError(t, err)
 
-	pix, err := pixService.GetPix(ctx, payload.E2EID)
+	pix, err := pixService.GetPix(ctx, payload.EndToEndID)
 	require.NoError(t, err)
 	assert.Equal(t, domain.ValorCentavos(15000), pix.ValorCentavos)
 }
@@ -89,7 +89,7 @@ func TestHandleCallbackDuplicate(t *testing.T) {
 	svc := service.NewWebhookService(pc.Pool, webhookRepo, pixRepo, cobRepo, pixService, pspClient, outboxWriter, nil)
 
 	payload := domain.WebhookPayload{
-		E2EID: "E90400888202305231DEDUP12345678",
+		EndToEndID: "E90400888202305231DEDUP12345678",
 		Chave: "matspectrum@gmail.com",
 		Valor: "200.00",
 	}

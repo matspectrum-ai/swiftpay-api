@@ -119,11 +119,11 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 				defer wg.Done()
 				defer func() { <-sem }()
 
-				pspPix, err := w.pspClient.GetPix(ctx, local.E2EID)
+				pspPix, err := w.pspClient.GetPix(ctx, local.EndToEndID)
 				if err != nil {
 					mu.Lock()
 					discrepancies = append(discrepancies, reconciliationRecord{
-						E2EID:            local.E2EID,
+						EndToEndID:            local.EndToEndID,
 						LocalValor:       fmt.Sprintf("%.2f", float64(local.ValorCentavos)/100.0),
 						TipoDiscrepancia: "NAO_ENCONTRADO_PSP",
 					})
@@ -134,12 +134,12 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 				hasDiscrepancy := false
 				var pspValor domain.ValorCentavos
 				if err := pspValor.UnmarshalJSON([]byte(`"` + pspPix.Valor + `"`)); err != nil {
-					slog.WarnContext(ctx, "erro convertendo valor PSP", "e2eid", local.E2EID, "psp_valor", pspPix.Valor, "error", err)
+					slog.WarnContext(ctx, "erro convertendo valor PSP", "e2eid", local.EndToEndID, "psp_valor", pspPix.Valor, "error", err)
 					return
 				}
 
 				rec := reconciliationRecord{
-					E2EID:      local.E2EID,
+					EndToEndID:      local.EndToEndID,
 					LocalValor: fmt.Sprintf("%.2f", float64(local.ValorCentavos)/100.0),
 					PSPValor:   pspPix.Valor,
 				}
@@ -170,7 +170,7 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 		slog.WarnContext(ctx, "discrepâncias encontradas", "count", len(discrepancies))
 		for _, d := range discrepancies {
 			if err := w.saveDiscrepancy(ctx, d); err != nil {
-				slog.ErrorContext(ctx, "erro salvando discrepância", "e2eid", d.E2EID, "error", err)
+				slog.ErrorContext(ctx, "erro salvando discrepância", "e2eid", d.EndToEndID, "error", err)
 			}
 		}
 	} else {
@@ -198,7 +198,7 @@ func (w *ReconciliationWorker) run(ctx context.Context) error {
 }
 
 type reconciliationRecord struct {
-	E2EID            string
+	EndToEndID            string
 	LocalValor       string
 	PSPValor         string
 	LocalHorario     time.Time
@@ -210,10 +210,10 @@ func (w *ReconciliationWorker) saveDiscrepancy(ctx context.Context, rec reconcil
 	_, err := w.db.Exec(ctx,
 		`INSERT INTO reconciliation_reports (e2eid, local_valor, psp_valor, local_horario, psp_horario, tipo_discrepancia)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		rec.E2EID, rec.LocalValor, rec.PSPValor, rec.LocalHorario, rec.PSPHorario, rec.TipoDiscrepancia,
+		rec.EndToEndID, rec.LocalValor, rec.PSPValor, rec.LocalHorario, rec.PSPHorario, rec.TipoDiscrepancia,
 	)
 	if err != nil {
-		return fmt.Errorf("inserindo discrepância e2eid=%s: %w", rec.E2EID, err)
+		return fmt.Errorf("inserindo discrepância e2eid=%s: %w", rec.EndToEndID, err)
 	}
 	return nil
 }

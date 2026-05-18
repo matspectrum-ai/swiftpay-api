@@ -37,16 +37,16 @@ func NewCobService(db *pgxpool.Pool, cobRepo *postgres.CobRepo, pspClient psp.PS
 	}
 }
 
-func (s *CobService) CreateCob(ctx context.Context, cob *domain.Cobranca) (*domain.Cobranca, error) {
+func (s *CobService) CreateCob(ctx context.Context, cob *domain.Cobranca) (*domain.Cobranca, bool, error) {
 	cob.Sanitize()
 
 	if err := cob.Validate(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("iniciando transação: %w", err)
+		return nil, false, fmt.Errorf("iniciando transação: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
@@ -54,34 +54,34 @@ func (s *CobService) CreateCob(ctx context.Context, cob *domain.Cobranca) (*doma
 	if err == nil && existing != nil {
 		tx.Rollback(ctx)
 		if existing.Chave == cob.Chave && existing.Valor.Original == cob.Valor.Original {
-			return existing, nil
+			return existing, false, nil
 		}
-		return nil, domain.FormatValidationError("txid %s já existe com dados diferentes", cob.TxID)
+		return nil, false, domain.FormatValidationError("txid %s já existe com dados diferentes", cob.TxID)
 	}
 
 	cob.Status = domain.CobStatusAtiva
 	if err := s.cobRepo.Create(ctx, tx, cob); err != nil {
-		return nil, fmt.Errorf("salvando cobrança: %w", err)
+		return nil, false, fmt.Errorf("salvando cobrança: %w", err)
 	}
 
 	if err := s.outboxWriter.Write(ctx, tx, "cobranca", cob.TxID, "CobrancaCriada", cob); err != nil {
-		return nil, fmt.Errorf("escrevendo outbox: %w", err)
+		return nil, false, fmt.Errorf("escrevendo outbox: %w", err)
 	}
 
 	key := domain.IdempotencyKeyFromContext(ctx)
 	if key != "" {
 		responseBody, err := json.Marshal(cob)
 		if err != nil {
-			return nil, fmt.Errorf("serializando cobrança: %w", err)
+			return nil, false, fmt.Errorf("serializando cobrança: %w", err)
 		}
 		if err := s.idempotencyRepo.CompleteTx(ctx, tx, key, domain.EndpointPathFromContext(ctx), http.StatusCreated, responseBody); err != nil {
-			return nil, fmt.Errorf("completando idempotencia: %w", err)
+			return nil, false, fmt.Errorf("completando idempotencia: %w", err)
 		}
 	}
 
 	nextStateJSON, err := json.Marshal(cob)
 	if err != nil {
-		return nil, fmt.Errorf("serializando cobrança: %w", err)
+		return nil, false, fmt.Errorf("serializando cobrança: %w", err)
 	}
 	if s.ledgerRepo != nil {
 		if err := s.ledgerRepo.Append(ctx, tx, &postgres.LedgerEvent{
@@ -99,7 +99,7 @@ func (s *CobService) CreateCob(ctx context.Context, cob *domain.Cobranca) (*doma
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit transação: %w", err)
+		return nil, false, fmt.Errorf("commit transação: %w", err)
 	}
 
 	cobReq := psp.CobRequest{
@@ -116,7 +116,7 @@ func (s *CobService) CreateCob(ctx context.Context, cob *domain.Cobranca) (*doma
 
 	if err != nil {
 		slog.ErrorContext(ctx, "psp criar cobrança falhou após commit local", "error", err, "txid", cob.TxID)
-		return cob, nil
+		return cob, true, nil
 	}
 
 	cob.Revisao = pspResp.Revisao
@@ -127,22 +127,22 @@ func (s *CobService) CreateCob(ctx context.Context, cob *domain.Cobranca) (*doma
 	updateTx, err := s.db.Begin(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, "falha ao iniciar tx de update psp", "error", err)
-		return cob, nil
+		return cob, true, nil
 	}
 	defer updateTx.Rollback(ctx)
 
 	if err := s.cobRepo.Update(ctx, updateTx, cob); err != nil {
 		slog.WarnContext(ctx, "falha ao atualizar dados PSP", "error", err)
-		return cob, nil
+		return cob, true, nil
 	}
 
 	if err := updateTx.Commit(ctx); err != nil {
 		slog.WarnContext(ctx, "falha ao commitar update PSP", "error", err)
-		return cob, nil
+		return cob, true, nil
 	}
 
 	slog.InfoContext(ctx, "cobrança criada", "txid", cob.TxID, "status", cob.Status)
-	return cob, nil
+	return cob, true, nil
 }
 
 func (s *CobService) UpdateCob(ctx context.Context, txid string, cob *domain.Cobranca) (*domain.Cobranca, error) {

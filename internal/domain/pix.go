@@ -6,7 +6,7 @@ import (
 
 // PixRecebido representa um pagamento Pix liquidado.
 type PixRecebido struct {
-	E2EID             string         `json:"e2eid"`
+	EndToEndID             string         `json:"endToEndId"`
 	TxID              string         `json:"txid,omitempty"`
 	Chave             string         `json:"chave"`
 	ValorCentavos     ValorCentavos  `json:"valor"`
@@ -31,7 +31,7 @@ type PixFilter struct {
 // Devolucao representa uma solicitação de devolução parcial/total.
 type Devolucao struct {
 	ID        string        `json:"id"`
-	E2EID     string        `json:"e2eid"`
+	EndToEndID     string        `json:"endToEndId"`
 	Valor     ValorCentavos `json:"valor"`
 	Horario   time.Time     `json:"horario"`
 	Status    string        `json:"status"`
@@ -40,7 +40,7 @@ type Devolucao struct {
 
 // WebhookPayload representa o payload enviado pelo PSP no callback.
 type WebhookPayload struct {
-	E2EID             string    `json:"e2eid"`
+	EndToEndID             string    `json:"e2eid"`
 	TxID              string    `json:"txid"`
 	Chave             string    `json:"chave"`
 	Valor             string    `json:"valor"`
@@ -56,7 +56,7 @@ func (p *WebhookPayload) ToPixRecebido() *PixRecebido {
 	var v ValorCentavos
 	v.UnmarshalJSON([]byte(`"` + p.Valor + `"`))
 	return &PixRecebido{
-		E2EID:             p.E2EID,
+		EndToEndID:             p.EndToEndID,
 		TxID:              p.TxID,
 		Chave:             p.Chave,
 		ValorCentavos:     v,

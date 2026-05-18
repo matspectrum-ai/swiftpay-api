@@ -44,14 +44,18 @@ func (h *CobHandler) CreateCob(w http.ResponseWriter, r *http.Request) {
 	}
 	cob.TxID = txid
 
-	result, err := h.cobService.CreateCob(r.Context(), &cob)
+	result, created, err := h.cobService.CreateCob(r.Context(), &cob)
 	if err != nil {
 		writeProblem(w, err)
 		return
 	}
 
 	w.Header().Set("Location", result.Location)
-	writeJSON(w, http.StatusCreated, result)
+	if created {
+		writeJSON(w, http.StatusCreated, result)
+	} else {
+		writeJSON(w, http.StatusOK, result)
+	}
 }
 
 func (h *CobHandler) UpdateCob(w http.ResponseWriter, r *http.Request) {

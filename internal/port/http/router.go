@@ -35,8 +35,7 @@ func SetupRouter(cfg RouterConfig) chi.Router {
 
 	r.Route("/cob", func(r chi.Router) {
 		r.Use(mw.IdempotencyMiddleware(cfg.IdempotencyRepo))
-		r.Post("/{txid}", cfg.CobHandler.CreateCob)
-		r.Put("/{txid}", cfg.CobHandler.UpdateCob)
+		r.Put("/{txid}", cfg.CobHandler.CreateCob)
 		r.Patch("/{txid}", cfg.CobHandler.PatchCob)
 		r.Get("/{txid}", cfg.CobHandler.GetCob)
 		r.Get("/", cfg.CobHandler.ListCobs)

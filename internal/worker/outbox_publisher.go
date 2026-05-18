@@ -170,7 +170,7 @@ func PixRecebidoHandler(ctx context.Context, msg postgres.OutboxMessage) error {
 		return fmt.Errorf("deserializando pix: %w", err)
 	}
 	slog.InfoContext(ctx, "evento: pix recebido",
-		"e2eid", pix.E2EID,
+		"e2eid", pix.EndToEndID,
 		"valor", int64(pix.ValorCentavos),
 	)
 	return nil
@@ -183,7 +183,7 @@ func DevolucaoSolicitadaHandler(ctx context.Context, msg postgres.OutboxMessage)
 	}
 	slog.InfoContext(ctx, "evento: devolução solicitada (idempotencia via outbox msg_id)",
 		"id", dev.ID,
-		"e2eid", dev.E2EID,
+		"e2eid", dev.EndToEndID,
 		"valor", dev.Valor,
 		"outbox_msg_id", msg.ID,
 	)

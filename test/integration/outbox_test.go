@@ -42,7 +42,7 @@ func TestOutboxWriteOnCreate(t *testing.T) {
 		Calendar: domain.Calendar{Expiracao: 86400},
 	}
 
-	_, err = svc.CreateCob(ctx, cob)
+	_, _, err = svc.CreateCob(ctx, cob)
 	require.NoError(t, err)
 
 	messages, err := outboxReader.FetchPending(ctx, 10)
@@ -85,7 +85,7 @@ func TestOutboxPublished(t *testing.T) {
 		Calendar: domain.Calendar{Expiracao: 86400},
 	}
 
-	_, err = svc.CreateCob(ctx, cob)
+	_, _, err = svc.CreateCob(ctx, cob)
 	require.NoError(t, err)
 
 	messages, err := outboxReader.FetchPending(ctx, 10)

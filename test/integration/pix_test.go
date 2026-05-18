@@ -31,7 +31,7 @@ func TestGetPix(t *testing.T) {
 	svc := service.NewPixService(pc.Pool, pixRepo, cobRepo, pspClient, outboxWriter)
 
 	pix := &domain.PixRecebido{
-		E2EID:         "E90400888202305231234ABCDEFG12345",
+		EndToEndID:         "E90400888202305231234ABCDEFG12345",
 		Chave:         "matspectrum@gmail.com",
 		ValorCentavos: 10000,
 	}
@@ -39,9 +39,9 @@ func TestGetPix(t *testing.T) {
 	err = svc.ProcessPixRecebido(ctx, pix)
 	require.NoError(t, err)
 
-	result, err := svc.GetPix(ctx, pix.E2EID)
+	result, err := svc.GetPix(ctx, pix.EndToEndID)
 	require.NoError(t, err)
-	assert.Equal(t, pix.E2EID, result.E2EID)
+	assert.Equal(t, pix.EndToEndID, result.EndToEndID)
 	assert.Equal(t, domain.ValorCentavos(10000), result.ValorCentavos)
 }
 
@@ -60,12 +60,12 @@ func TestListPix(t *testing.T) {
 	svc := service.NewPixService(pc.Pool, pixRepo, cobRepo, pspClient, outboxWriter)
 
 	pix1 := &domain.PixRecebido{
-		E2EID:         "E0000000000123456789012345678901",
+		EndToEndID:         "E0000000000123456789012345678901",
 		Chave:         "matspectrum@gmail.com",
 		ValorCentavos: 5000,
 	}
 	pix2 := &domain.PixRecebido{
-		E2EID:         "E0000000000123456789012345678902",
+		EndToEndID:         "E0000000000123456789012345678902",
 		Chave:         "outro@exemplo.com",
 		ValorCentavos: 7500,
 	}
@@ -97,7 +97,7 @@ func TestCreateDevolucao(t *testing.T) {
 	svc := service.NewPixService(pc.Pool, pixRepo, cobRepo, pspClient, outboxWriter)
 
 	pix := &domain.PixRecebido{
-		E2EID:         "E0000000000123456789012345678999",
+		EndToEndID:         "E0000000000123456789012345678999",
 		Chave:         "matspectrum@gmail.com",
 		ValorCentavos: 20000,
 	}

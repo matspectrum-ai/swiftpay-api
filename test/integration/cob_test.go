@@ -41,7 +41,7 @@ func TestCreateCob(t *testing.T) {
 		Calendar: domain.Calendar{Expiracao: 86400},
 	}
 
-	result, err := svc.CreateCob(ctx, cob)
+	result, _, err := svc.CreateCob(ctx, cob)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, domain.CobStatusAtiva, result.Status)
@@ -74,10 +74,10 @@ func TestCreateCobDuplicate(t *testing.T) {
 		Calendar: domain.Calendar{Expiracao: 86400},
 	}
 
-	result1, err := svc.CreateCob(ctx, cob)
+	result1, _, err := svc.CreateCob(ctx, cob)
 	require.NoError(t, err)
 
-	result2, err := svc.CreateCob(ctx, cob)
+	result2, _, err := svc.CreateCob(ctx, cob)
 	require.NoError(t, err)
 	assert.Equal(t, result1.TxID, result2.TxID)
 }
@@ -107,7 +107,7 @@ func TestGetCob(t *testing.T) {
 		Calendar: domain.Calendar{Expiracao: 86400},
 	}
 
-	_, err = svc.CreateCob(ctx, cob)
+	_, _, err = svc.CreateCob(ctx, cob)
 	require.NoError(t, err)
 
 	result, err := svc.GetCob(ctx, cob.TxID)
@@ -160,7 +160,7 @@ func TestPatchCob(t *testing.T) {
 		Calendar: domain.Calendar{Expiracao: 86400},
 	}
 
-	_, err = svc.CreateCob(ctx, cob)
+	_, _, err = svc.CreateCob(ctx, cob)
 	require.NoError(t, err)
 
 	patch := &domain.CobrancaPatch{Status: domain.CobStatusRemovidaPeloUsuario}

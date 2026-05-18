@@ -27,18 +27,18 @@ func (r *PixRepo) Create(ctx context.Context, tx pgx.Tx, pix *domain.PixRecebido
 		`INSERT INTO pix_recebidos (e2eid, txid, chave_pix, valor, horario_liquidacao,
 		 pagador_nome, pagador_cpf, pagador_cnpj, info_pagador)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		pix.E2EID, pix.TxID, pix.Chave, int64(pix.ValorCentavos),
+		pix.EndToEndID, pix.TxID, pix.Chave, int64(pix.ValorCentavos),
 		pix.HorarioLiquidacao, pix.PagadorNome, pix.PagadorCPF,
 		pix.PagadorCNPJ, pix.InfoPagador,
 	)
 	if err != nil {
-		return fmt.Errorf("inserindo pix e2eid=%s: %w", pix.E2EID, err)
+		return fmt.Errorf("inserindo pix e2eid=%s: %w", pix.EndToEndID, err)
 	}
 	return nil
 }
 
-// GetByE2EID busca Pix por e2eid.
-func (r *PixRepo) GetByE2EID(ctx context.Context, e2eid string) (*domain.PixRecebido, error) {
+// GetByEndToEndID busca Pix por e2eid.
+func (r *PixRepo) GetByEndToEndID(ctx context.Context, e2eid string) (*domain.PixRecebido, error) {
 	var pix domain.PixRecebido
 	var valorCentavos int64
 
@@ -47,7 +47,7 @@ func (r *PixRepo) GetByE2EID(ctx context.Context, e2eid string) (*domain.PixRece
 		 pagador_nome, pagador_cpf, pagador_cnpj, info_pagador, created_at
 		 FROM pix_recebidos WHERE e2eid = $1`, e2eid,
 	).Scan(
-		&pix.E2EID, &pix.TxID, &pix.Chave, &valorCentavos,
+		&pix.EndToEndID, &pix.TxID, &pix.Chave, &valorCentavos,
 		&pix.HorarioLiquidacao, &pix.PagadorNome, &pix.PagadorCPF,
 		&pix.PagadorCNPJ, &pix.InfoPagador, &pix.CreatedAt,
 	)
@@ -108,7 +108,7 @@ func (r *PixRepo) List(ctx context.Context, filter domain.PixFilter) ([]domain.P
 		var pix domain.PixRecebido
 		var valorCentavos int64
 		if err := rows.Scan(
-			&pix.E2EID, &pix.TxID, &pix.Chave, &valorCentavos,
+			&pix.EndToEndID, &pix.TxID, &pix.Chave, &valorCentavos,
 			&pix.HorarioLiquidacao, &pix.PagadorNome, &pix.PagadorCPF,
 			&pix.PagadorCNPJ, &pix.InfoPagador, &pix.CreatedAt,
 		); err != nil {
@@ -130,7 +130,7 @@ func (r *PixRepo) CreateDevolucao(ctx context.Context, tx pgx.Tx, dev *domain.De
 	_, err := tx.Exec(ctx,
 		`INSERT INTO devolucoes (external_id, e2eid, valor, status, horario)
 		 VALUES ($1, $2, $3, $4, $5)`,
-		dev.ID, dev.E2EID, int64(dev.Valor), dev.Status, dev.Horario,
+		dev.ID, dev.EndToEndID, int64(dev.Valor), dev.Status, dev.Horario,
 	)
 	if err != nil {
 		return fmt.Errorf("inserindo devolucao id=%s: %w", dev.ID, err)
@@ -154,7 +154,7 @@ func (r *PixRepo) ListDevolucoes(ctx context.Context, e2eid string) ([]domain.De
 		var dev domain.Devolucao
 		var valorCentavos int64
 		if err := rows.Scan(
-			&dev.ID, &dev.E2EID, &valorCentavos,
+			&dev.ID, &dev.EndToEndID, &valorCentavos,
 			&dev.Status, &dev.Horario, &dev.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scaneando devolucao: %w", err)

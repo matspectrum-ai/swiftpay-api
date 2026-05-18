@@ -31,9 +31,9 @@ func NewPixService(db *pgxpool.Pool, pixRepo *postgres.PixRepo, cobRepo *postgre
 }
 
 func (s *PixService) ProcessPixRecebido(ctx context.Context, pix *domain.PixRecebido) error {
-	existing, err := s.pixRepo.GetByE2EID(ctx, pix.E2EID)
+	existing, err := s.pixRepo.GetByEndToEndID(ctx, pix.EndToEndID)
 	if err == nil && existing != nil {
-		slog.InfoContext(ctx, "pix já processado (dedup)", "e2eid", pix.E2EID)
+		slog.InfoContext(ctx, "pix já processado (dedup)", "e2eid", pix.EndToEndID)
 		return nil
 	}
 
@@ -70,7 +70,7 @@ func (s *PixService) ProcessPixRecebido(ctx context.Context, pix *domain.PixRece
 		}
 	}
 
-	if err := s.outboxWriter.Write(ctx, tx, "pix", pix.E2EID, "PixRecebido", pix); err != nil {
+	if err := s.outboxWriter.Write(ctx, tx, "pix", pix.EndToEndID, "PixRecebido", pix); err != nil {
 		return fmt.Errorf("escrevendo outbox pix: %w", err)
 	}
 
@@ -78,12 +78,12 @@ func (s *PixService) ProcessPixRecebido(ctx context.Context, pix *domain.PixRece
 		return fmt.Errorf("commit transação pix: %w", err)
 	}
 
-	slog.InfoContext(ctx, "pix recebido processado", "e2eid", pix.E2EID, "valor", int64(pix.ValorCentavos))
+	slog.InfoContext(ctx, "pix recebido processado", "e2eid", pix.EndToEndID, "valor", int64(pix.ValorCentavos))
 	return nil
 }
 
 func (s *PixService) GetPix(ctx context.Context, e2eid string) (*domain.PixRecebido, error) {
-	return s.pixRepo.GetByE2EID(ctx, e2eid)
+	return s.pixRepo.GetByEndToEndID(ctx, e2eid)
 }
 
 func (s *PixService) ListPix(ctx context.Context, filter domain.PixFilter) ([]domain.PixRecebido, int, error) {
@@ -91,7 +91,7 @@ func (s *PixService) ListPix(ctx context.Context, filter domain.PixFilter) ([]do
 }
 
 func (s *PixService) CreateDevolucao(ctx context.Context, e2eid, devID, valorStr string) (*domain.Devolucao, error) {
-	existing, err := s.pixRepo.GetByE2EID(ctx, e2eid)
+	existing, err := s.pixRepo.GetByEndToEndID(ctx, e2eid)
 	if err != nil {
 		return nil, fmt.Errorf("pix nao encontrado para devolucao: %w", err)
 	}
@@ -103,7 +103,7 @@ func (s *PixService) CreateDevolucao(ctx context.Context, e2eid, devID, valorStr
 
 	dev := &domain.Devolucao{
 		ID:      devID,
-		E2EID:   e2eid,
+		EndToEndID:   e2eid,
 		Valor:   valor,
 		Status:  "PENDENTE",
 		Horario: existing.HorarioLiquidacao,
