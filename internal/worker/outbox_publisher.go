@@ -22,6 +22,7 @@ type OutboxPublisher struct {
 	pollInterval   time.Duration
 	retryConfig    RetryConfig
 	wg             sync.WaitGroup
+	maxWorkers     int
 }
 
 type OutboxHandler func(ctx context.Context, msg postgres.OutboxMessage) error
@@ -33,6 +34,7 @@ func NewOutboxPublisher(db *pgxpool.Pool, reader *postgres.OutboxReader, pollInt
 		handlers:     make(map[string]OutboxHandler),
 		pollInterval: pollInterval,
 		retryConfig:  DefaultRetryConfig(),
+		maxWorkers:   10,
 	}
 }
 
@@ -95,48 +97,73 @@ func (p *OutboxPublisher) processBatch(ctx context.Context) error {
 
 	slog.DebugContext(ctx, "processando lote outbox", "count", len(messages))
 
+	// Bounded worker pool — prevents goroutine explosion
+	sem := make(chan struct{}, p.maxWorkers)
+	var mu sync.Mutex
+	var errs []error
+	var batchWg sync.WaitGroup
+
 	for _, msg := range messages {
-		handler, ok := p.handlers[msg.EventType]
-		if !ok {
-			slog.WarnContext(ctx, "handler não registrado para evento",
-				"event_type", msg.EventType,
-				"aggregate_id", msg.AggregateID,
-			)
-			if err := p.reader.AckPublished(ctx, msg.ID, msg.ClaimedBy); err != nil {
-				slog.ErrorContext(ctx, "erro marcando publicado", "id", msg.ID, "error", err)
-			}
-			continue
+		msg := msg
+
+		select {
+		case <-ctx.Done():
+			batchWg.Wait()
+			return ctx.Err()
+		default:
 		}
 
-		handlerErr := handler(ctx, msg)
+		batchWg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer batchWg.Done()
+			defer func() { <-sem }()
 
-		if handlerErr != nil {
-			observability.RetryCount.WithLabelValues("outbox", "failure").Inc()
-			slog.ErrorContext(ctx, "erro processando mensagem outbox",
-				"id", msg.ID,
-				"event_type", msg.EventType,
-				"error", handlerErr,
-			)
-
-			if msg.Attempts+1 >= msg.MaxAttempts {
-				observability.WorkerErrors.WithLabelValues("outbox_deadletter").Inc()
-				if moveErr := p.reader.MoveToDeadLetter(ctx, msg, msg.ClaimedBy); moveErr != nil {
-					slog.ErrorContext(ctx, "erro movendo para deadletter", "id", msg.ID, "error", moveErr)
+			handler, ok := p.handlers[msg.EventType]
+			if !ok {
+				slog.WarnContext(ctx, "handler não registrado",
+					"event_type", msg.EventType,
+				)
+				if ackErr := p.reader.AckPublished(ctx, msg.ID, msg.ClaimedBy); ackErr != nil {
+					slog.ErrorContext(ctx, "erro marcando publicado", "id", msg.ID, "error", ackErr)
 				}
-			} else {
-				observability.WorkerErrors.WithLabelValues("outbox_retry").Inc()
-				if nackErr := p.reader.NackFailed(ctx, msg.ID, msg.ClaimedBy, handlerErr.Error()); nackErr != nil {
-					slog.ErrorContext(ctx, "erro marcando falha", "id", msg.ID, "error", nackErr)
-				}
+				return
 			}
-			continue
-		}
 
-		if err := p.reader.AckPublished(ctx, msg.ID, msg.ClaimedBy); err != nil {
-			slog.ErrorContext(ctx, "erro marcando publicado", "id", msg.ID, "error", err)
-		}
+			handlerErr := handler(ctx, msg)
+
+			if handlerErr != nil {
+				observability.RetryCount.WithLabelValues("outbox", "failure").Inc()
+
+				if msg.Attempts+1 >= msg.MaxAttempts {
+					observability.WorkerErrors.WithLabelValues("outbox_deadletter").Inc()
+					if moveErr := p.reader.MoveToDeadLetter(ctx, msg, msg.ClaimedBy); moveErr != nil {
+						slog.ErrorContext(ctx, "erro movendo para deadletter", "id", msg.ID, "error", moveErr)
+					}
+				} else {
+					observability.WorkerErrors.WithLabelValues("outbox_retry").Inc()
+					if nackErr := p.reader.NackFailed(ctx, msg.ID, msg.ClaimedBy, handlerErr.Error()); nackErr != nil {
+						slog.ErrorContext(ctx, "erro marcando falha", "id", msg.ID, "error", nackErr)
+					}
+				}
+
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("msg %s: %w", msg.ID, handlerErr))
+				mu.Unlock()
+				return
+			}
+
+			if ackErr := p.reader.AckPublished(ctx, msg.ID, msg.ClaimedBy); ackErr != nil {
+				slog.ErrorContext(ctx, "erro marcando publicado", "id", msg.ID, "error", ackErr)
+			}
+		}()
 	}
 
+	batchWg.Wait()
+
+	if len(errs) > 0 {
+		return fmt.Errorf("batch had %d errors: %v", len(errs), errs[0])
+	}
 	return nil
 }
 
