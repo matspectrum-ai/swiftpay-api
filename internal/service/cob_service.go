@@ -70,13 +70,19 @@ func (s *CobService) CreateCob(ctx context.Context, cob *domain.Cobranca) (*doma
 
 	key := domain.IdempotencyKeyFromContext(ctx)
 	if key != "" {
-		responseBody, _ := json.Marshal(cob)
+		responseBody, err := json.Marshal(cob)
+		if err != nil {
+			return nil, fmt.Errorf("serializando cobrança: %w", err)
+		}
 		if err := s.idempotencyRepo.CompleteTx(ctx, tx, key, domain.EndpointPathFromContext(ctx), http.StatusCreated, responseBody); err != nil {
 			return nil, fmt.Errorf("completando idempotencia: %w", err)
 		}
 	}
 
-	nextStateJSON, _ := json.Marshal(cob)
+	nextStateJSON, err := json.Marshal(cob)
+	if err != nil {
+		return nil, fmt.Errorf("serializando cobrança: %w", err)
+	}
 	if s.ledgerRepo != nil {
 		if err := s.ledgerRepo.Append(ctx, tx, &postgres.LedgerEvent{
 			EventType:       "cobranca_criada",

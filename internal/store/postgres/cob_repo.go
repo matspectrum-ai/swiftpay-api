@@ -126,7 +126,7 @@ func (r *CobRepo) List(ctx context.Context, filter domain.CobFilter) ([]domain.C
 		`SELECT COUNT(*) FROM cobrancas
 		 WHERE ($1::timestamptz IS NULL OR created_at >= $1)
 		 AND ($2::timestamptz IS NULL OR created_at <= $2)`,
-		filter.Inicio, filter.Fim,
+		nullTime(filter.Inicio), nullTime(filter.Fim),
 	).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("contando cobranças: %w", err)
@@ -142,7 +142,7 @@ func (r *CobRepo) List(ctx context.Context, filter domain.CobFilter) ([]domain.C
 		 AND ($4::timestamptz IS NULL OR created_at <= $4)
 		 ORDER BY created_at DESC
 		 LIMIT $1 OFFSET $2`,
-		filter.Limit, filter.Offset, filter.Inicio, filter.Fim,
+		filter.Limit, filter.Offset, nullTime(filter.Inicio), nullTime(filter.Fim),
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listando cobranças: %w", err)

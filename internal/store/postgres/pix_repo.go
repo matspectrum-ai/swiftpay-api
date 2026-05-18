@@ -78,7 +78,7 @@ func (r *PixRepo) List(ctx context.Context, filter domain.PixFilter) ([]domain.P
 		 AND ($2::timestamptz IS NULL OR horario_liquidacao <= $2)
 		 AND ($3::varchar IS NULL OR txid = $3)
 		 AND ($4::varchar IS NULL OR chave_pix = $4)`,
-		filter.Inicio, filter.Fim, filter.TxID, filter.Chave,
+		nullTime(filter.Inicio), nullTime(filter.Fim), nullString(filter.TxID), nullString(filter.Chave),
 	).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("contando pix: %w", err)
@@ -95,8 +95,8 @@ func (r *PixRepo) List(ctx context.Context, filter domain.PixFilter) ([]domain.P
 		 ORDER BY horario_liquidacao DESC
 		 LIMIT $1 OFFSET $2`,
 		filter.Limit, filter.Offset,
-		filter.Inicio, filter.Fim,
-		filter.TxID, filter.Chave,
+		nullTime(filter.Inicio), nullTime(filter.Fim),
+		nullString(filter.TxID), nullString(filter.Chave),
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listando pix: %w", err)

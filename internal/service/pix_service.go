@@ -97,7 +97,9 @@ func (s *PixService) CreateDevolucao(ctx context.Context, e2eid, devID, valorStr
 	}
 
 	var valor domain.ValorCentavos
-	valor.UnmarshalJSON([]byte(`"` + valorStr + `"`))
+	if err := valor.UnmarshalJSON([]byte(`"` + valorStr + `"`)); err != nil {
+		return nil, fmt.Errorf("valor inválido para devolução: %w", err)
+	}
 
 	dev := &domain.Devolucao{
 		ID:      devID,
